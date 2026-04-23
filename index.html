@@ -552,70 +552,9 @@
     .cta-form input:focus { border-color: var(--accent); }
     .cta-form input::placeholder { color: var(--muted); }
 
-    /* ── FOOTER ── */
-    footer {
-      background: var(--surface);
-      border-top: 1px solid var(--border);
-      padding: 60px 5% 32px;
-    }
-
-    .footer-top {
-      display: flex;
-      justify-content: space-between;
-      flex-wrap: wrap;
-      gap: 40px;
-      margin-bottom: 48px;
-    }
-
-    .footer-brand p {
-      font-size: 0.88rem;
-      color: var(--muted);
-      max-width: 260px;
-      line-height: 1.6;
-      margin-top: 12px;
-    }
-
-    .footer-links h4 {
-      font-size: 0.82rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: var(--muted);
-      margin-bottom: 16px;
-    }
-
-    .footer-links ul {
-      list-style: none;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-
-    .footer-links ul a {
-      font-size: 0.88rem;
-      color: #aaa;
-      text-decoration: none;
-      transition: color 0.2s;
-    }
-
-    .footer-links ul a:hover { color: var(--text); }
-
-    .footer-bottom {
-      border-top: 1px solid var(--border);
-      padding-top: 24px;
-      display: flex;
-      justify-content: space-between;
-      flex-wrap: wrap;
-      gap: 12px;
-      font-size: 0.82rem;
-      color: var(--muted);
-    }
-
-    /* ── RESPONSIVE ── */
     @media (max-width: 768px) {
       nav ul { display: none; }
       .stats { flex-direction: column; }
-      .footer-top { flex-direction: column; }
     }
   </style>
 </head>
@@ -745,46 +684,6 @@
       <a href="#" class="btn-primary">Create Free Account</a>
     </div>
   </section>
-
-  <!-- FOOTER -->
-  <footer>
-    <div class="footer-top">
-      <div class="footer-brand">
-        <div class="logo">Easy<span>Trade</span></div>
-        <p>Remove the FOMO, trade confidently.</p>
-      </div>
-      <div class="footer-links">
-        <h4>Product</h4>
-        <ul>
-          <li><a href="#">Features</a></li>
-          <li><a href="#">Pricing</a></li>
-          <li><a href="#">Markets</a></li>
-          <li><a href="#">Mobile App</a></li>
-        </ul>
-      </div>
-      <div class="footer-links">
-        <h4>Company</h4>
-        <ul>
-          <li><a href="#">About</a></li>
-          <li><a href="#">Blog</a></li>
-          <li><a href="#">Careers</a></li>
-          <li><a href="#">Press</a></li>
-        </ul>
-      </div>
-      <div class="footer-links">
-        <h4>Legal</h4>
-        <ul>
-          <li><a href="#">Privacy Policy</a></li>
-          <li><a href="#">Terms of Service</a></li>
-          <li><a href="#">Risk Disclosure</a></li>
-        </ul>
-      </div>
-    </div>
-    <div class="footer-bottom">
-      <span>© 2025 EasyTrade Inc. All rights reserved.</span>
-      <span>Trading involves risk. Past performance is not indicative of future results.</span>
-    </div>
-  </footer>
 
 </body>
 </html>
