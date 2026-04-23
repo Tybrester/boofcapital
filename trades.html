@@ -215,6 +215,20 @@
       loadTrades();
     }
 
+    function showTradeError(message) {
+      let errDiv = document.getElementById('trade-error-banner');
+      if (!errDiv) {
+        errDiv = document.createElement('div');
+        errDiv.id = 'trade-error-banner';
+        errDiv.style.cssText = 'background:rgba(255,23,68,0.1);border:1px solid var(--red);color:var(--red);padding:12px 16px;border-radius:8px;margin-bottom:16px;font-size:0.85rem;display:flex;align-items:center;gap:8px;';
+        const main = document.querySelector('main');
+        main.insertBefore(errDiv, main.firstChild);
+      }
+      errDiv.innerHTML = `<span>⚠️</span> ${message}`;
+      errDiv.style.display = 'flex';
+      setTimeout(() => { errDiv.style.display = 'none'; }, 5000);
+    }
+
     async function fillTrade(id, action, price, quantity) {
       const cost = price * quantity;
       const { data: { session } } = await sbClient.auth.getSession();
@@ -226,7 +240,7 @@
       
       // Safety check: prevent fills that would cause negative balance
       if (action === 'buy' && cost > currentBalance) {
-        alert(`Insufficient funds. Trade cost ($${cost.toLocaleString()}) exceeds balance ($${currentBalance.toLocaleString()}).\n\nAdjust quantity or add more funds.`);
+        showTradeError(`Insufficient funds. Trade cost ($${cost.toLocaleString()}) exceeds balance ($${currentBalance.toLocaleString()}). Adjust quantity or add more funds.`);
         return;
       }
 
