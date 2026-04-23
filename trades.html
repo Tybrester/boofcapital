@@ -514,7 +514,7 @@
       await loadSystemsFilter();
       await loadTrades();
       await loadSystemsDropdown();
-      buildJSONPreview();
+      if (document.getElementById('json-action')) buildJSONPreview();
       // Poll every 10s to pick up new webhook trades automatically
       setInterval(loadTrades, 60000);
     }
