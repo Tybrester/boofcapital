@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Connecting tastytrade...</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0a0a0a;
+      color: #f5f5f5;
+      font-family: 'Inter', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .container {
+      text-align: center;
+      padding: 40px;
+    }
+    .spinner {
+      width: 48px; height: 48px;
+      border: 3px solid #1f1f1f;
+      border-top-color: #00e676;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 24px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 12px; }
+    p { color: #888; font-size: 0.95rem; }
+    .error { color: #ff1744; margin-top: 16px; }
+    .success { color: #00e676; margin-top: 16px; }
+    .btn {
+      margin-top: 24px;
+      padding: 12px 24px;
+      background: #00e676;
+      color: #000;
+      border: none;
+      border-radius: 8px;
+      font-weight: 700;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="spinner" id="spinner"></div>
+    <h1 id="title">Connecting tastytrade...</h1>
+    <p id="subtitle">Please wait while we complete the connection</p>
+    <div id="message"></div>
+  </div>
+
+  <script>
+    const SUPABASE_URL = 'https://isanhutzyctcjygjhzbn.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlzYW5odXR6eWN0Y2p5Z2poemJuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxMTYzNDYsImV4cCI6MjA5MTY5MjM0Nn0.L0ATp-IriR708C2n3as_YXDgjHvtn_CWubbzPeSxRi0';
+
+    async function handleCallback() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const code = urlParams.get('code');
+      const state = urlParams.get('state');
+      const error = urlParams.get('error');
+
+      const title = document.getElementById('title');
+      const subtitle = document.getElementById('subtitle');
+      const spinner = document.getElementById('spinner');
+      const message = document.getElementById('message');
+
+      if (error) {
+        spinner.style.display = 'none';
+        title.textContent = 'Connection Failed';
+        subtitle.textContent = '';
+        message.innerHTML = `<div class="error">Error: ${error}</div><a href="brokers.html" class="btn">Go Back</a>`;
+        return;
+      }
+
+      if (!code || !state) {
+        spinner.style.display = 'none';
+        title.textContent = 'Invalid Request';
+        subtitle.textContent = '';
+        message.innerHTML = `<div class="error">Missing authorization code</div><a href="brokers.html" class="btn">Go Back</a>`;
+        return;
+      }
+
+      try {
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/tasty-oauth?action=callback&code=${code}&state=${state}`, {
+          headers: { 'apikey': SUPABASE_ANON_KEY }
+        });
+        const json = await res.json();
+
+        spinner.style.display = 'none';
+
+        if (json.success) {
+          title.textContent = 'Connected!';
+          title.style.color = '#00e676';
+          subtitle.textContent = 'Your tastytrade account is now linked.';
+          message.innerHTML = `<div class="success">Successfully connected to tastytrade</div><a href="brokers.html" class="btn">Continue</a>`;
+        } else {
+          throw new Error(json.error || 'Failed to complete connection');
+        }
+      } catch (err) {
+        spinner.style.display = 'none';
+        title.textContent = 'Connection Failed';
+        subtitle.textContent = '';
+        message.innerHTML = `<div class="error">${err.message}</div><a href="brokers.html" class="btn">Try Again</a>`;
+      }
+    }
+
+    handleCallback();
+  </script>
+</body>
+</html>

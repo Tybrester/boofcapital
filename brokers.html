@@ -217,7 +217,8 @@
             <div id="tastytrade-status" style="display:none;" class="broker-status">✓ Connected</div>
             <div id="tastytrade-account-display" style="display:none;font-size:0.78rem;color:#555;margin-top:2px;"></div>
             <div style="display:flex;gap:8px;">
-              <button class="broker-connect" id="tastytrade-connect-btn" onclick="openTastyModal()">Connect Account</button>
+              <button class="broker-connect" id="tastytrade-connect-btn" onclick="connectTastyOAuth()">Connect with tastytrade</button>
+              <button class="broker-connect" id="tastytrade-api-btn" onclick="openTastyModal()" style="margin-top:8px;background:transparent;border:1px solid #444;color:#888;font-size:0.75rem;padding:6px 12px;">Or use API credentials</button>
               <button id="tastytrade-disconnect-btn" onclick="disconnectTastytrade()" style="display:none;background:transparent;border:1px solid var(--red);color:var(--red);font-size:0.82rem;font-weight:700;padding:8px 16px;border-radius:7px;cursor:pointer;font-family:inherit;">Disconnect</button>
             </div>
           </div>
@@ -281,6 +282,32 @@
         await sbClient.auth.updateUser({ data: { paper_trading_enabled: true, paper_balance: parseFloat(localStorage.getItem('paper_balance')) } });
       }
       window.location.href = 'accounts.html';
+    }
+
+    async function connectTastyOAuth() {
+      const { data: { session } } = await sbClient.auth.getSession();
+      if (!session) { alert('Please sign in first'); return; }
+      
+      const btn = document.getElementById('tastytrade-connect-btn');
+      btn.textContent = 'Redirecting...';
+      btn.disabled = true;
+
+      try {
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/tasty-oauth?action=login&user_id=${session.user.id}`, {
+          headers: { 'apikey': SUPABASE_ANON_KEY }
+        });
+        const json = await res.json();
+        
+        if (json.login_url) {
+          window.location.href = json.login_url;
+        } else {
+          throw new Error(json.error || 'Failed to get OAuth URL');
+        }
+      } catch (err) {
+        alert('OAuth not configured yet: ' + err.message);
+        btn.textContent = 'Connect with tastytrade';
+        btn.disabled = false;
+      }
     }
 
     function openTastyModal() {
