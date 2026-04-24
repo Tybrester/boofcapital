@@ -252,8 +252,8 @@
             <label>Trade Direction</label>
             <div style="display:flex;gap:8px;margin-top:8px;">
               <button type="button" id="cs-td-both" onclick="setCreateTradeDirection('both')" style="flex:1;padding:10px 16px;background:#111;border:2px solid #2a2a2a;color:var(--text);border-radius:8px;font-size:0.85rem;font-weight:600;cursor:pointer;transition:all 0.15s;">Both</button>
-              <button type="button" id="cs-td-long" onclick="setCreateTradeDirection('long')" style="flex:1;padding:10px 16px;background:#111;border:2px solid #2a2a2a;color:var(--accent);border-radius:8px;font-size:0.85rem;font-weight:600;cursor:pointer;transition:all 0.15s;">Long Only</button>
-              <button type="button" id="cs-td-short" onclick="setCreateTradeDirection('short')" style="flex:1;padding:10px 16px;background:#111;border:2px solid #2a2a2a;color:var(--red);border-radius:8px;font-size:0.85rem;font-weight:600;cursor:pointer;transition:all 0.15s;">Short Only</button>
+              <button type="button" id="cs-td-long" onclick="setCreateTradeDirection('long')" style="flex:1;padding:10px 16px;background:#111;border:2px solid #2a2a2a;color:var(--text);border-radius:8px;font-size:0.85rem;font-weight:600;cursor:pointer;transition:all 0.15s;">Long Only</button>
+              <button type="button" id="cs-td-short" onclick="setCreateTradeDirection('short')" style="flex:1;padding:10px 16px;background:#111;border:2px solid #2a2a2a;color:var(--text);border-radius:8px;font-size:0.85rem;font-weight:600;cursor:pointer;transition:all 0.15s;">Short Only</button>
             </div>
             <input type="hidden" id="cs-trade-direction" value="both">
             <div style="font-size:0.75rem;color:var(--muted);margin-top:8px;">Long Only: Sell alerts only close positions. Short Only: Buy alerts only close positions.</div>
@@ -296,7 +296,7 @@
         if (btn) {
           const isActive = d === direction;
           btn.style.background = isActive ? 'var(--accent)' : '#111';
-          btn.style.color = isActive ? '#000' : (d === 'long' ? 'var(--accent)' : d === 'short' ? 'var(--red)' : 'var(--text)');
+          btn.style.color = isActive ? '#000' : 'var(--text)';
           btn.style.borderColor = isActive ? 'var(--accent)' : '#2a2a2a';
         }
       });
