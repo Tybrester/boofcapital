@@ -68,17 +68,46 @@ Deno.serve(async (req) => {
       } catch (_) { price = null; }
     }
 
-    // Insert trade record
+    // Handle paper trading with balance check
+    const isPaperBroker = broker === 'paper' || broker === 'booftrade paper' || broker === 'EasyTrade Paper';
+    let tradeStatus = 'open';
+    let failureReason = null;
+    let finalPrice = price;
+    
+    if (isPaperBroker && system.auto_submit && price) {
+      const cost = price * quantity;
+      const { data: acct } = await supabase.from('paper_accounts').select('*').eq('user_id', userId).maybeSingle();
+      const currentBalance = acct?.balance ?? 100000;
+      
+      // Check sufficient balance for buy orders BEFORE creating trade
+      if (action === 'buy' && cost > currentBalance) {
+        // Go straight to failed - don't even try to fill
+        tradeStatus = 'failed';
+        failureReason = `Insufficient funds: trade cost $${cost.toFixed(2)} exceeds balance $${currentBalance.toFixed(2)}`;
+      } else {
+        // Sufficient balance - fill immediately
+        tradeStatus = 'filled';
+        if (acct) {
+          const newBalance = action === 'buy' ? acct.balance - cost : acct.balance + cost;
+          await supabase.from('paper_accounts').update({ balance: newBalance, updated_at: new Date().toISOString() }).eq('user_id', userId);
+        } else {
+          await supabase.from('paper_accounts').insert({ user_id: userId, balance: action === 'buy' ? 100000 - cost : 100000 + cost });
+        }
+      }
+    }
+
+    // Insert trade record with final status
     const { data: trade, error: tradeErr } = await supabase.from('trades').insert({
       user_id: userId,
       system_id: systemId,
       symbol,
       action,
       quantity,
-      price,
+      price: finalPrice,
       order_type: orderType,
       broker,
-      status: 'open',
+      status: tradeStatus,
+      failure_reason: failureReason,
       payload: body,
       created_at: new Date().toISOString(),
     }).select().single();
@@ -87,36 +116,6 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: tradeErr.message }), {
         status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
-    }
-
-    // Handle paper trading — update balance and auto-fill if auto_submit enabled
-    const isPaperBroker = broker === 'paper' || broker === 'booftrade paper' || broker === 'EasyTrade Paper';
-    if (isPaperBroker) {
-      if (system.auto_submit && price) {
-        const cost = price * quantity;
-        const { data: acct } = await supabase.from('paper_accounts').select('*').eq('user_id', userId).maybeSingle();
-        const currentBalance = acct?.balance ?? 100000;
-        
-        // Check sufficient balance for buy orders
-        if (action === 'buy' && cost > currentBalance) {
-          // Mark as failed due to insufficient funds
-          await supabase.from('trades').update({ 
-            status: 'failed', 
-            price: price,
-            failure_reason: `Insufficient funds: trade cost $${cost.toFixed(2)} exceeds balance $${currentBalance.toFixed(2)}`
-          }).eq('id', trade.id);
-        } else {
-          // Sufficient balance - proceed with fill
-          if (acct) {
-            const newBalance = action === 'buy' ? acct.balance - cost : acct.balance + cost;
-            await supabase.from('paper_accounts').update({ balance: newBalance, updated_at: new Date().toISOString() }).eq('user_id', userId);
-          } else {
-            await supabase.from('paper_accounts').insert({ user_id: userId, balance: action === 'buy' ? 100000 - cost : 100000 + cost });
-          }
-          // Auto-fill the trade immediately
-          await supabase.from('trades').update({ status: 'filled', price: price }).eq('id', trade.id);
-        }
-      }
     }
 
     // Handle tastytrade — place real order via direct API
@@ -191,7 +190,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    return new Response(JSON.stringify({ success: true, trade_id: trade.id, symbol, action, price, quantity }), {
+    return new Response(JSON.stringify({ success: true, trade_id: trade.id, symbol, action, price, quantity, status: tradeStatus }), {
       status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
