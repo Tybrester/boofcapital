@@ -84,6 +84,17 @@
     .btn-save:hover { background: var(--accent-dim); }
 
     @media (max-width: 900px) { .sidebar { display: none; } }
+
+    .user-dropdown { position: relative; }
+    .user-dropdown-toggle { display: flex; align-items: center; gap: 8px; padding: 8px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; font-size: 0.88rem; color: var(--muted); font-weight: 500; cursor: pointer; transition: all 0.2s; }
+    .user-dropdown-toggle:hover { background: #1a1a1a; color: var(--text); }
+    .user-dropdown-toggle::after { content: '▾'; font-size: 0.7rem; color: var(--accent); }
+    .user-dropdown-menu { position: absolute; top: calc(100% + 8px); right: 0; min-width: 180px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 8px 0; box-shadow: 0 10px 30px rgba(0,0,0,0.4); opacity: 0; visibility: hidden; transform: translateY(-8px); transition: all 0.2s; z-index: 100; }
+    .user-dropdown.open .user-dropdown-menu { opacity: 1; visibility: visible; transform: translateY(0); }
+    .user-dropdown-item { display: flex; align-items: center; gap: 10px; padding: 10px 16px; font-size: 0.85rem; color: var(--text); cursor: pointer; transition: background 0.2s; border: none; background: none; width: 100%; text-align: left; font-family: inherit; }
+    .user-dropdown-item:hover { background: rgba(255,255,255,0.05); }
+    .user-dropdown-item.red { color: var(--red); }
+    .nav-right { display: flex; align-items: center; gap: 16px; }
   </style>
 </head>
 <body>
@@ -93,6 +104,18 @@
   <div id="app">
     <nav>
       <a href="dashboard.html" class="logo">Boof<span style="color:var(--accent);">Trade</span></a>
+      <div class="nav-right">
+        <div class="user-dropdown" id="user-dropdown">
+          <button class="user-dropdown-toggle" id="user-email-toggle">
+            <span id="user-email"></span>
+          </button>
+          <div class="user-dropdown-menu">
+            <button class="user-dropdown-item red" onclick="signOut()">
+              <span>🚪</span> Sign Out
+            </button>
+          </div>
+        </div>
+      </div>
     </nav>
 
     <div class="layout">
@@ -104,10 +127,6 @@
         <div class="sidebar-section">Trading</div>
         <a href="trades.html" class="sidebar-item">Trades</a>
         <a href="brokers.html" class="sidebar-item active">Brokers</a>
-        <div class="sidebar-bottom">
-          <a href="#" class="sidebar-item" style="padding:8px 4px;">Account <span class="sidebar-arrow">›</span></a>
-          <button class="sidebar-item" id="signout-btn" style="color:#ff1744;padding:8px 4px;width:100%;">Sign Out</button>
-        </div>
       </aside>
 
       <main>
@@ -519,10 +538,28 @@
         if (resetBtn) resetBtn.style.display = 'inline-block';
       }
 
-      document.getElementById('signout-btn').addEventListener('click', async () => {
-        await sbClient.auth.signOut();
-        window.location.href = 'index.html';
+      // User email in dropdown
+      document.getElementById('user-email').textContent = currentUser.email;
+
+      // User dropdown toggle
+      const dropdown = document.getElementById('user-dropdown');
+      const toggle = document.getElementById('user-email-toggle');
+      
+      toggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        dropdown.classList.toggle('open');
       });
+
+      document.addEventListener('click', (e) => {
+        if (!dropdown.contains(e.target)) {
+          dropdown.classList.remove('open');
+        }
+      });
+    }
+
+    async function signOut() {
+      await sbClient.auth.signOut();
+      window.location.href = 'index.html';
     }
 
     init();
