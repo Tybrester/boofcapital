@@ -581,6 +581,8 @@
         if (s.endsWith('USDT')) s = s.replace('USDT', '-USD');
         return s;
       }
+      // Expose to global scope for onclick handlers
+      window.normalizeSymbol = normalizeSymbol;
 
       async function refreshStats() {
         // Load all trades
@@ -650,8 +652,17 @@
         // Unrealized P&L
         const unrealEl = document.getElementById('stat-unrealized');
         const unrealSub = document.getElementById('stat-unrealized-sub');
+        // Calculate total entry cost for percentage
+        let totalEntryCost = 0;
+        openTrades.forEach(t => {
+          const normalizedSymbol = normalizeSymbol(t.symbol);
+          const isOption = /\d{6}[CP]\d+$/.test(t.symbol);
+          const multiplier = isOption ? 100 : (contractMultipliers[normalizedSymbol] || 1);
+          totalEntryCost += (t.price || 0) * multiplier * (t.quantity || 1);
+        });
+        const totalPct = totalEntryCost > 0 ? ((unrealizedPnl / totalEntryCost) * 100).toFixed(2) : '0.00';
         if (unrealEl) {
-          unrealEl.textContent = (unrealizedPnl >= 0 ? '+$' : '-$') + Math.abs(unrealizedPnl).toFixed(2);
+          unrealEl.textContent = (unrealizedPnl >= 0 ? '+$' : '-$') + Math.abs(unrealizedPnl).toFixed(2) + ` (${unrealizedPnl >= 0 ? '+' : ''}${totalPct}%)`;
           unrealEl.style.color = unrealizedPnl >= 0 ? 'var(--accent)' : 'var(--red)';
         }
         if (unrealSub) unrealSub.textContent = openTrades.length > 0 ? `${openTrades.length} open position${openTrades.length !== 1 ? 's' : ''}` : 'No open positions';
@@ -696,8 +707,10 @@
               const isOption = /\d{6}[CP]\d+$/.test(t.symbol);
               const multiplier = isOption ? 100 : (contractMultipliers[normalizedSymbol] || 1);
               const diff = pointDiff !== null ? pointDiff * multiplier * t.quantity : null;
+              const entryCost = entry * multiplier * (t.quantity || 1);
+              const pct = diff !== null && entryCost > 0 ? ((diff / entryCost) * 100).toFixed(2) : '0.00';
               const pnlHtml = diff !== null
-                ? `<span style="color:${diff >= 0 ? 'var(--accent)' : 'var(--red)'}">${diff >= 0 ? '+' : ''}$${diff.toFixed(2)}</span>`
+                ? `<span style="color:${diff >= 0 ? 'var(--accent)' : 'var(--red)'}">${diff >= 0 ? '+' : ''}$${diff.toFixed(2)} (${diff >= 0 ? '+' : ''}${pct}%)</span>`
                 : '—';
               return `<tr>
                 <td style="color:var(--accent);font-weight:600;">${t.symbol || '—'}</td>
@@ -729,6 +742,8 @@
         }
         if (wrSub) wrSub.textContent = closedTrades.length > 0 ? `${wins} wins / ${closedTrades.length} trades` : 'Start trading to track';
       }
+      // Expose refreshStats globally for closeTrade
+      window.refreshStats = refreshStats;
 
       await refreshStats();
       setInterval(refreshStats, 30000);
@@ -757,47 +772,79 @@
     }
 
     async function closeTrade(id, symbol, direction, entryPrice, quantity, broker) {
-      const { data: { session } } = await sbClient.auth.getSession();
-      if (!session) return;
+      // Show confirmation modal first
+      const overlay = document.createElement('div');
+      overlay.id = 'close-modal';
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999;';
       
-      let exitPrice = null;
-      try {
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/get-price?symbol=${encodeURIComponent(symbol)}`, { headers: { 'apikey': SUPABASE_ANON_KEY } });
-        const j = await res.json();
-        exitPrice = j.price;
-      } catch(e) {}
+      const modal = document.createElement('div');
+      modal.style.cssText = 'background:var(--surface);border-radius:12px;padding:28px 32px;max-width:400px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.5);';
+      
+      modal.innerHTML = `
+        <div style="font-size:2rem;margin-bottom:12px;">⚠️</div>
+        <div style="font-size:1.1rem;font-weight:700;color:var(--text);margin-bottom:12px;">Close Trade?</div>
+        <div style="font-size:0.9rem;color:var(--muted);line-height:1.5;margin-bottom:24px;">This will close your ${symbol || 'trade'} position.<br>Proceed?</div>
+        <div style="display:flex;gap:12px;justify-content:center;">
+          <button id="close-cancel" style="background:transparent;border:1px solid #555;color:#888;font-weight:600;padding:10px 20px;border-radius:8px;cursor:pointer;font-family:inherit;font-size:0.85rem;">Cancel</button>
+          <button id="close-confirm" style="background:var(--red);color:#fff;font-weight:700;padding:10px 20px;border-radius:8px;border:none;cursor:pointer;font-family:inherit;font-size:0.85rem;">Close Position</button>
+        </div>
+      `;
+      
+      overlay.appendChild(modal);
+      document.body.appendChild(overlay);
+      
+      document.getElementById('close-cancel').addEventListener('click', () => overlay.remove());
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+      
+      document.getElementById('close-confirm').addEventListener('click', async () => {
+        overlay.remove();
+        
+        const { data: { session } } = await sbClient.auth.getSession();
+        if (!session) return;
+        
+        let exitPrice = null;
+        try {
+          const res = await fetch(`${SUPABASE_URL}/functions/v1/get-price?symbol=${encodeURIComponent(symbol)}`, { headers: { 'apikey': SUPABASE_ANON_KEY } });
+          const j = await res.json();
+          exitPrice = j.price;
+        } catch(e) {}
 
-      // Normalize symbol for multiplier lookup
-      const normalizedSymbol = normalizeSymbol(symbol);
-      // Futures contract multipliers ($ per point)
-      const futuresMultipliers = {
-        'ES=F': 50, 'MES=F': 5, 'NQ=F': 20, 'MNQ=F': 2,
-        'CL=F': 1000, 'MCL=F': 100, 'GC=F': 100, 'MGC=F': 10,
-        'SI=F': 5000, 'SIL=F': 1000, 'NG=F': 10000,
-        'ZB=F': 1000, 'ZN=F': 1000, 'YM=F': 5, 'MYM=F': 0.5,
-        'RTY=F': 50, 'M2K=F': 5,
-      };
-      const multiplier = futuresMultipliers[normalizedSymbol] || 1;
-      const pointDiff = exitPrice ? (direction === 'Long' ? (exitPrice - entryPrice) : (entryPrice - exitPrice)) : 0;
-      const pnl = pointDiff * multiplier * quantity;
+        // Normalize symbol for multiplier lookup
+        const normalizedSymbol = normalizeSymbol(symbol);
+        // Futures contract multipliers ($ per point)
+        const futuresMultipliers = {
+          'ES=F': 50, 'MES=F': 5, 'NQ=F': 20, 'MNQ=F': 2,
+          'CL=F': 1000, 'MCL=F': 100, 'GC=F': 100, 'MGC=F': 10,
+          'SI=F': 5000, 'SIL=F': 1000, 'NG=F': 10000,
+          'ZB=F': 1000, 'ZN=F': 1000, 'YM=F': 5, 'MYM=F': 0.5,
+          'RTY=F': 50, 'M2K=F': 5,
+        };
+        const multiplier = futuresMultipliers[normalizedSymbol] || 1;
+        const pointDiff = exitPrice ? (direction === 'Long' ? (exitPrice - entryPrice) : (entryPrice - exitPrice)) : 0;
+        const pnl = pointDiff * multiplier * quantity;
 
-      await sbClient.from('trades').update({
-        status: 'closed',
-        closed_at: new Date().toISOString(),
-        pnl: pnl,
-      }).eq('id', id);
+        await sbClient.from('trades').update({
+          status: 'closed',
+          closed_at: new Date().toISOString(),
+          pnl: pnl,
+        }).eq('id', id);
 
-      // Update paper account balance in Supabase
-      if (broker === 'paper' || broker === 'booftrade paper' || broker === 'EasyTrade Paper') {
-        const { data: acct } = await sbClient.from('paper_accounts').select('balance').eq('user_id', session.user.id).maybeSingle();
-        if (acct) {
-          const newBalance = acct.balance + pnl;
-          await sbClient.from('paper_accounts').update({ balance: newBalance, updated_at: new Date().toISOString() }).eq('user_id', session.user.id);
+        // Update paper account balance in Supabase
+        if (broker === 'paper' || broker === 'booftrade paper' || broker === 'EasyTrade Paper') {
+          const { data: acct } = await sbClient.from('paper_accounts').select('balance').eq('user_id', session.user.id).maybeSingle();
+          if (acct) {
+            const newBalance = acct.balance + pnl;
+            await sbClient.from('paper_accounts')
+              .update({ balance: newBalance, updated_at: new Date().toISOString() })
+              .eq('user_id', session.user.id);
+          }
         }
-      }
 
-      refreshStats(); // Refresh dashboard stats
+        refreshStats(); // Refresh dashboard stats
+      });
     }
+    // Expose closeTrade globally for onclick handlers
+    window.closeTrade = closeTrade;
 
     async function signOut() {
       await sbClient.auth.signOut();

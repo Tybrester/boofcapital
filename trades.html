@@ -58,6 +58,10 @@
     .btn-close-trade { background: none; border: 1px solid #2a2a2a; color: var(--muted); font-size: 0.78rem; padding: 5px 12px; border-radius: 5px; cursor: pointer; font-family: inherit; transition: border-color 0.15s, color 0.15s; }
     .btn-close-trade:hover { border-color: var(--red); color: var(--red); }
 
+    /* TP/SL dropdown styling */
+    select option { background: #1a1a1a; color: var(--text); }
+    select option:hover { background: #2a2a2a; }
+
     @media (max-width: 900px) { .sidebar { display: none; } }
   </style>
 </head>
@@ -186,45 +190,83 @@
       } catch(e) { console.error('[fetchPrice error]', e); return null; }
     }
 
-    async function closeTrade(id, symbol, direction, entryPrice, quantity, broker) {
-      let exitPrice = null;
-      try {
-        exitPrice = await fetchPrice(symbol);
-      } catch(e) {}
-
-      // Futures and options multipliers
-      const contractMultipliers = {
-        // Futures ($ per point)
-        'ES=F': 50, 'MES=F': 5, 'NQ=F': 20, 'MNQ=F': 2,
-        'CL=F': 1000, 'MCL=F': 100, 'GC=F': 100, 'MGC=F': 10,
-        'SI=F': 5000, 'SIL=F': 1000, 'NG=F': 10000,
-        'ZB=F': 1000, 'ZN=F': 1000, 'YM=F': 5, 'MYM=F': 0.5,
-        'RTY=F': 50, 'M2K=F': 5,
-      };
-      const normalizedSymbol = normalizeSymbol(symbol);
-      // Check if options by symbol pattern (contains date and C/P)
-      const isOption = /\d{6}[CP]\d+$/.test(symbol);
-      const multiplier = isOption ? 100 : (contractMultipliers[normalizedSymbol] || 1);
-      const pointDiff = exitPrice ? (direction === 'Long' ? (exitPrice - entryPrice) : (entryPrice - exitPrice)) : 0;
-      const pnl = pointDiff * multiplier * quantity;
-
-      await sbClient.from('trades').update({
-        status: 'closed',
-        closed_at: new Date().toISOString(),
-        pnl: pnl,
-      }).eq('id', id);
-
-      if (broker === 'EasyTrade Paper') {
-        const currentBalance = parseFloat(localStorage.getItem('paper_balance') || '100000');
-        const newBalance = Math.max(0, currentBalance + pnl);
-        localStorage.setItem('paper_balance', String(newBalance));
-        const { data: { session } } = await sbClient.auth.getSession();
-        if (session) {
-          await sbClient.auth.updateUser({ data: { paper_balance: newBalance } });
-        }
+    async function closeTrade(id, symbol, direction, entryPrice, quantity, broker, auto = false) {
+      // Show confirmation modal first (unless auto-closing)
+      if (!auto) {
+        const overlay = document.createElement('div');
+        overlay.id = 'close-modal';
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999;';
+        
+        const modal = document.createElement('div');
+        modal.style.cssText = 'background:var(--surface);border-radius:12px;padding:28px 32px;max-width:400px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.5);';
+        
+        modal.innerHTML = `
+          <div style="font-size:2rem;margin-bottom:12px;">⚠️</div>
+          <div style="font-size:1.1rem;font-weight:700;color:var(--text);margin-bottom:12px;">Close Trade?</div>
+          <div style="font-size:0.9rem;color:var(--muted);line-height:1.5;margin-bottom:24px;">This will close your ${symbol || 'trade'} position.<br>Proceed?</div>
+          <div style="display:flex;gap:12px;justify-content:center;">
+            <button id="close-cancel" style="background:transparent;border:1px solid #555;color:#888;font-weight:600;padding:10px 20px;border-radius:8px;cursor:pointer;font-family:inherit;font-size:0.85rem;">Cancel</button>
+            <button id="close-confirm" style="background:var(--red);color:#fff;font-weight:700;padding:10px 20px;border-radius:8px;border:none;cursor:pointer;font-family:inherit;font-size:0.85rem;">Close Position</button>
+          </div>
+        `;
+        
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+        
+        document.getElementById('close-cancel').addEventListener('click', () => overlay.remove());
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+        
+        document.getElementById('close-confirm').addEventListener('click', async () => {
+          overlay.remove();
+          await executeClose(id, symbol, direction, entryPrice, quantity, broker);
+        });
+        return;
       }
+      
+      // Auto-close without confirmation
+      await executeClose(id, symbol, direction, entryPrice, quantity, broker);
+    }
 
-      loadTrades();
+    async function executeClose(id, symbol, direction, entryPrice, quantity, broker) {
+        
+        let exitPrice = null;
+        try {
+          exitPrice = await fetchPrice(symbol);
+        } catch(e) {}
+
+        // Futures and options multipliers
+        const contractMultipliers = {
+          // Futures ($ per point)
+          'ES=F': 50, 'MES=F': 5, 'NQ=F': 20, 'MNQ=F': 2,
+          'CL=F': 1000, 'MCL=F': 100, 'GC=F': 100, 'MGC=F': 10,
+          'SI=F': 5000, 'SIL=F': 1000, 'NG=F': 10000,
+          'ZB=F': 1000, 'ZN=F': 1000, 'YM=F': 5, 'MYM=F': 0.5,
+          'RTY=F': 50, 'M2K=F': 5,
+        };
+        const normalizedSymbol = normalizeSymbol(symbol);
+        // Check if options by symbol pattern (contains date and C/P)
+        const isOption = /\d{6}[CP]\d+$/.test(symbol);
+        const multiplier = isOption ? 100 : (contractMultipliers[normalizedSymbol] || 1);
+        const pointDiff = exitPrice ? (direction === 'Long' ? (exitPrice - entryPrice) : (entryPrice - exitPrice)) : 0;
+        const pnl = pointDiff * multiplier * quantity;
+
+        await sbClient.from('trades').update({
+          status: 'closed',
+          closed_at: new Date().toISOString(),
+          pnl: pnl,
+        }).eq('id', id);
+
+        if (broker === 'EasyTrade Paper') {
+          const currentBalance = parseFloat(localStorage.getItem('paper_balance') || '100000');
+          const newBalance = Math.max(0, currentBalance + pnl);
+          localStorage.setItem('paper_balance', String(newBalance));
+          const { data: { session } } = await sbClient.auth.getSession();
+          if (session) {
+            await sbClient.auth.updateUser({ data: { paper_balance: newBalance } });
+          }
+        }
+
+        loadTrades();
     }
 
     async function rejectTrade(id) {
@@ -282,6 +324,59 @@
 
       await sbClient.from('trades').update({ status: 'filled', price }).eq('id', id);
       loadTrades();
+    }
+
+    async function updateTPSL(id, field, value, type, entryPrice) {
+      const statusEl = document.getElementById(`${field === 'take_profit' ? 'tp' : 'sl'}-status-${id}`);
+      if (statusEl) statusEl.textContent = 'Saving...';
+      
+      const numValue = parseFloat(value);
+      if (isNaN(numValue)) {
+        // Clear TP/SL
+        const updateData = field === 'take_profit' 
+          ? { take_profit: null, take_profit_type: null, take_profit_input: null }
+          : { stop_loss: null, stop_loss_type: null, stop_loss_input: null };
+        await sbClient.from('trades').update(updateData).eq('id', id);
+        if (statusEl) statusEl.textContent = 'Cleared';
+        setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 2000);
+        return;
+      }
+
+      // Calculate actual price based on type
+      let actualPrice = numValue;
+      if (type === 'percent') {
+        // Convert percentage to price
+        const pct = numValue / 100;
+        if (field === 'take_profit') {
+          actualPrice = entryPrice * (1 + pct);  // TP is above entry for long
+        } else {
+          actualPrice = entryPrice * (1 - pct);  // SL is below entry for long
+        }
+      }
+
+      const updateData = field === 'take_profit' 
+        ? { take_profit: actualPrice, take_profit_type: type, take_profit_input: numValue }
+        : { stop_loss: actualPrice, stop_loss_type: type, stop_loss_input: numValue };
+      
+      const { error } = await sbClient.from('trades').update(updateData).eq('id', id);
+      if (error) {
+        console.error('Failed to update TP/SL:', error);
+        if (statusEl) {
+          statusEl.textContent = 'Error!';
+          statusEl.style.color = 'var(--red)';
+        }
+      } else {
+        if (statusEl) {
+          statusEl.textContent = '✓ Saved';
+          statusEl.style.color = 'var(--accent)';
+          setTimeout(() => {
+            if (statusEl) {
+              statusEl.textContent = `At: $${actualPrice.toFixed(2)}`;
+              statusEl.style.color = 'var(--muted)';
+            }
+          }, 2000);
+        }
+      }
     }
 
     async function retryTrade(id) {
@@ -406,7 +501,9 @@
             const isOption = /\d{6}[CP]\d+$/.test(t.symbol);
             const multiplier = isOption ? 100 : (contractMultipliers[normalizedSymbol] || 1);
             const diff = pointDiff * multiplier * t.quantity;
-            pnlHtml = `<span class="${diff >= 0 ? 'pnl-pos' : 'pnl-neg'}">${diff >= 0 ? '+' : ''}$${diff.toFixed(2)}</span>`;
+            const entryCost = entryPrice * multiplier * t.quantity;
+            const pct = entryCost > 0 ? ((diff / entryCost) * 100).toFixed(2) : '0.00';
+            pnlHtml = `<span class="${diff >= 0 ? 'pnl-pos' : 'pnl-neg'}">${diff >= 0 ? '+' : ''}$${diff.toFixed(2)} (${diff >= 0 ? '+' : ''}${pct}%)</span>`;
           }
           const isFilled = t.status === 'filled';
           const statusBadge = isFilled
@@ -418,21 +515,41 @@
             <td><span class="badge ${direction === 'Long' ? 'badge-long' : 'badge-short'}">${direction}</span></td>
             <td style="color:var(--muted);font-size:0.78rem;text-transform:uppercase;letter-spacing:0.05em;">${detectAssetType(t.symbol, t.payload)}</td>
             <td>${t.quantity || '—'}</td>
-            <td>${entryPrice ? '$'+Number(entryPrice).toFixed(2) : '—'}</td>
-            <td>${currentPrice ? '$'+currentPrice.toFixed(2) : '—'}</td>
+            <td>${entryPrice ? `<div>$${Number(entryPrice).toFixed(2)}</div><div style="font-size:0.7rem;color:var(--muted);">${t.quantity || 1} contract${(t.quantity || 1) !== 1 ? 's' : ''}</div>` : '—'}</td>
+            <td>${currentPrice ? `$${currentPrice.toFixed(2)}` : '—'}</td>
             <td>${pnlHtml}</td>
+            <td>
+              <div style="display:flex;gap:6px;align-items:center;">
+                <input type="number" step="0.01" id="tp-${t.id}" placeholder="TP" value="${t.take_profit_input || t.take_profit || ''}" onkeydown="if(event.key==='Enter'){updateTPSL('${t.id}','take_profit',this.value,document.getElementById('tp-type-${t.id}').value,${entryPrice});this.style.borderColor='var(--accent)';setTimeout(()=>this.style.borderColor='#333',1000);}" style="width:100px;background:#1a1a1a;border:2px solid #333;color:var(--text);padding:8px 10px;border-radius:6px;font-size:0.85rem;font-weight:600;outline:none;transition:border-color 0.2s;">
+                <select id="tp-type-${t.id}" onchange="updateTPSL('${t.id}', 'take_profit', document.getElementById('tp-${t.id}').value, this.value, ${entryPrice})" style="background:#1a1a1a;border:2px solid #333;color:var(--text);padding:8px;border-radius:6px;font-size:0.8rem;width:45px;cursor:pointer;">
+                  <option value="price" ${t.take_profit_type !== 'percent' ? 'selected' : ''}>$</option>
+                  <option value="percent" ${t.take_profit_type === 'percent' ? 'selected' : ''}>%</option>
+                </select>
+              </div>
+              <div id="tp-status-${t.id}" style="font-size:0.65rem;color:var(--muted);margin-top:2px;height:14px;"></div>
+            </td>
+            <td>
+              <div style="display:flex;gap:6px;align-items:center;">
+                <input type="number" step="0.01" id="sl-${t.id}" placeholder="SL" value="${t.stop_loss_input || t.stop_loss || ''}" onkeydown="if(event.key==='Enter'){updateTPSL('${t.id}','stop_loss',this.value,document.getElementById('sl-type-${t.id}').value,${entryPrice});this.style.borderColor='var(--red)';setTimeout(()=>this.style.borderColor='#333',1000);}" style="width:100px;background:#1a1a1a;border:2px solid #333;color:var(--text);padding:8px 10px;border-radius:6px;font-size:0.85rem;font-weight:600;outline:none;transition:border-color 0.2s;">
+                <select id="sl-type-${t.id}" onchange="updateTPSL('${t.id}', 'stop_loss', document.getElementById('sl-${t.id}').value, this.value, ${entryPrice})" style="background:#1a1a1a;border:2px solid #333;color:var(--text);padding:8px;border-radius:6px;font-size:0.8rem;width:45px;cursor:pointer;">
+                  <option value="price" ${t.stop_loss_type !== 'percent' ? 'selected' : ''}>$</option>
+                  <option value="percent" ${t.stop_loss_type === 'percent' ? 'selected' : ''}>%</option>
+                </select>
+              </div>
+              <div id="sl-status-${t.id}" style="font-size:0.65rem;color:var(--muted);margin-top:2px;height:14px;"></div>
+            </td>
             <td style="color:var(--muted);font-size:0.8rem;">${t.broker || 'paper'}</td>
             <td style="color:var(--muted);font-size:0.78rem;">${filledAt}</td>
             <td style="display:flex;gap:6px;">
               ${!isFilled ? `<button class="btn-close-trade" style="border-color:var(--accent);color:var(--accent);" onclick="fillTrade('${t.id}','${t.action||'buy'}',${currentPrice||entryPrice||0},${t.quantity||1})">Fill</button>` : ''}
-              <button class="btn-close-trade" onclick="closeTrade('${t.id}','${t.symbol}','${direction}',${entryPrice||0},${t.quantity||1},'${t.broker||'paper'}')">Close</button>
+              <button class="btn-close-trade" onclick="closeTrade('${t.id}','${(t.symbol || '').replace(/'/g, "\\'")}','${direction}',${entryPrice||0},${t.quantity||1},'${(t.broker || 'paper').replace(/'/g, "\\'")}')">Close</button>
             </td>
           </tr>`;
         }));
         openEl.innerHTML = `<table class="trades-table">
           <thead><tr>
             <th>Symbol</th><th>Side</th><th>Type</th><th>Qty</th>
-            <th>Entry</th><th>Current</th><th>P&L</th><th>Broker</th><th>Time Filled</th><th></th>
+            <th>Entry</th><th>Current</th><th>P&L</th><th>Take Profit</th><th>Stop Loss</th><th>Broker</th><th>Time Filled</th><th></th>
           </tr></thead>
           <tbody>${rows.join('')}</tbody>
         </table>`;
@@ -445,8 +562,10 @@
           const entryPrice = t.entry_price ?? t.price;
           const direction  = t.direction || (t.action === 'buy' ? 'Long' : 'Short');
           const pnl = t.pnl;
+          const entryCost = entryPrice * (t.quantity || 1);
+          const pct = entryCost > 0 && pnl != null ? ((pnl / entryCost) * 100).toFixed(2) : '0.00';
           const pnlHtml = pnl != null
-            ? `<span class="${pnl >= 0 ? 'pnl-pos' : 'pnl-neg'}">${pnl >= 0 ? '+' : ''}$${Number(pnl).toFixed(2)}</span>`
+            ? `<span class="${pnl >= 0 ? 'pnl-pos' : 'pnl-neg'}">${pnl >= 0 ? '+' : ''}$${Number(pnl).toFixed(2)} (${pnl >= 0 ? '+' : ''}${pct}%)</span>`
             : '—';
           return `<tr>
             <td style="color:var(--text);font-weight:600;">${t.symbol || '—'}</td>
@@ -637,6 +756,72 @@
       if (document.getElementById('json-action')) buildJSONPreview();
       // Poll every 10s to pick up new webhook trades automatically
       setInterval(loadTrades, 60000);
+      
+      // Check TP/SL levels every 30 seconds
+      setInterval(checkTPSLLevels, 30000);
+      checkTPSLLevels(); // Check immediately on load
+    }
+
+    async function checkTPSLLevels() {
+      const { data: { session } } = await sbClient.auth.getSession();
+      if (!session) return;
+      
+      // Get open trades with TP or SL set
+      const { data: trades } = await sbClient.from('trades')
+        .select('*')
+        .eq('user_id', session.user.id)
+        .eq('status', 'filled')
+        .or('take_profit.not.is.null,stop_loss.not.is.null');
+      
+      if (!trades || trades.length === 0) return;
+      
+      for (const trade of trades) {
+        const currentPrice = await fetchPrice(trade.symbol);
+        if (!currentPrice) continue;
+        
+        const entryPrice = trade.price;
+        const direction = trade.action === 'buy' ? 'Long' : 'Short';
+        let triggered = false;
+        let reason = '';
+        
+        // Check Take Profit
+        if (trade.take_profit) {
+          if (direction === 'Long' && currentPrice >= trade.take_profit) {
+            triggered = true;
+            reason = 'Take Profit hit';
+          } else if (direction === 'Short' && currentPrice <= trade.take_profit) {
+            triggered = true;
+            reason = 'Take Profit hit';
+          }
+        }
+        
+        // Check Stop Loss
+        if (!triggered && trade.stop_loss) {
+          if (direction === 'Long' && currentPrice <= trade.stop_loss) {
+            triggered = true;
+            reason = 'Stop Loss hit';
+          } else if (direction === 'Short' && currentPrice >= trade.stop_loss) {
+            triggered = true;
+            reason = 'Stop Loss hit';
+          }
+        }
+        
+        if (triggered) {
+          // Auto-close the trade (skip confirmation)
+          await closeTrade(trade.id, trade.symbol, direction, entryPrice, trade.quantity, trade.broker || 'paper', true);
+          
+          // Show toast notification
+          const toast = document.createElement('div');
+          toast.style.cssText = 'position:fixed;top:20px;right:20px;background:var(--surface);border:1px solid var(--accent);color:var(--text);padding:16px 24px;border-radius:8px;z-index:10000;box-shadow:0 4px 20px rgba(0,0,0,0.5);max-width:300px;';
+          toast.innerHTML = `
+            <div style="font-weight:700;color:var(--accent);margin-bottom:4px;">Trade Closed</div>
+            <div style="font-size:0.85rem;">${trade.symbol} - ${reason}</div>
+            <div style="font-size:0.8rem;color:var(--muted);margin-top:4px;">Price: $${currentPrice.toFixed(2)}</div>
+          `;
+          document.body.appendChild(toast);
+          setTimeout(() => toast.remove(), 5000);
+        }
+      }
     }
 
     async function signOut() {
