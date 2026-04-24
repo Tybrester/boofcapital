@@ -30,16 +30,19 @@ Deno.serve(async (req) => {
     });
 
     const ticker = normalizeSymbol(symbol);
+    const noCache = url.searchParams.get('nocache') === 'true';
 
-    // Return cached price if within 2 minutes
+    // Return cached price if within 30 seconds (unless nocache requested)
     const cached = cache[ticker];
-    if (cached && Date.now() - cached.ts < 120000) {
+    if (!noCache && cached && Date.now() - cached.ts < 30000) {
       return new Response(JSON.stringify({ price: cached.price, ticker, cached: true }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
-    const res = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1m&range=1d`, {
+    // URL encode ticker for Yahoo Finance (handle = in futures symbols)
+    const encodedTicker = encodeURIComponent(ticker);
+    const res = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodedTicker}?interval=1m&range=1d`, {
       headers: { 'User-Agent': 'Mozilla/5.0' }
     });
     const json = await res.json();

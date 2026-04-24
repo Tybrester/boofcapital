@@ -127,6 +127,8 @@
         <div class="sidebar-section">Trading</div>
         <a href="trades.html" class="sidebar-item">Trades</a>
         <a href="brokers.html" class="sidebar-item active">Brokers</a>
+        <div class="sidebar-section" style="margin-top:24px;">Help</div>
+        <a href="how-it-works.html" class="sidebar-item">How it Works</a>
       </aside>
 
       <main>
@@ -149,10 +151,7 @@
               <span class="broker-tag">Futures</span>
               <span class="broker-tag">Crypto</span>
             </div>
-            <div style="display:flex;gap:8px;">
-              <button class="broker-connect" id="paper-btn" style="background:var(--accent);color:#000;border:none;width:fit-content;" onclick="enablePaperTrading()">Enable Paper Trading</button>
-              <button id="reset-paper-btn" style="display:none;background:transparent;border:1px solid #555;color:#888;font-size:0.75rem;padding:6px 12px;border-radius:6px;cursor:pointer;font-family:inherit;" onclick="resetPaperBalance()">Reset Paper Trading</button>
-            </div>
+            <button class="broker-connect" id="paper-btn" style="background:var(--accent);color:#000;border:none;width:fit-content;" onclick="enablePaperTrading()">Enable Paper Trading</button>
           </div>
         </div>
 
@@ -309,71 +308,6 @@
       window.location.href = 'accounts.html';
     }
 
-    async function resetPaperBalance() {
-      // Show custom modal instead of browser confirm
-      const overlay = document.createElement('div');
-      overlay.id = 'reset-modal';
-      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999;';
-      
-      const modal = document.createElement('div');
-      modal.style.cssText = 'background:var(--surface);border-radius:12px;padding:28px 32px;max-width:400px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.5);';
-      
-      modal.innerHTML = `
-        <div style="font-size:2rem;margin-bottom:12px;">🔄</div>
-        <div style="font-size:1.1rem;font-weight:700;color:var(--text);margin-bottom:12px;">Reset Paper Trading?</div>
-        <div style="font-size:0.9rem;color:var(--muted);line-height:1.5;margin-bottom:24px;">This will:<br>• Reset balance to <strong style="color:var(--accent);">$100,000</strong><br>• <strong style="color:var(--red);">Delete ALL trades</strong><br>• Clear your trading history</div>
-        <div style="display:flex;gap:12px;justify-content:center;">
-          <button id="reset-cancel" style="background:transparent;border:1px solid #555;color:#888;font-weight:600;padding:10px 20px;border-radius:8px;cursor:pointer;font-family:inherit;font-size:0.85rem;">Cancel</button>
-          <button id="reset-confirm" style="background:var(--red);color:#fff;font-weight:700;padding:10px 20px;border-radius:8px;border:none;cursor:pointer;font-family:inherit;font-size:0.85rem;">Reset Everything</button>
-        </div>
-      `;
-      
-      overlay.appendChild(modal);
-      document.body.appendChild(overlay);
-      
-      // Handle buttons
-      document.getElementById('reset-cancel').addEventListener('click', () => overlay.remove());
-      overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
-      
-      document.getElementById('reset-confirm').addEventListener('click', async () => {
-        overlay.remove();
-        localStorage.setItem('paper_balance', '100000');
-        const { data: { session } } = await sbClient.auth.getSession();
-        if (session) {
-          // Delete ALL trades
-          const { error: deleteError } = await sbClient.from('trades')
-            .delete()
-            .eq('user_id', session.user.id);
-          
-          if (deleteError) {
-            console.error('Delete trades error:', deleteError);
-            alert('Failed to delete trades: ' + deleteError.message);
-            return;
-          }
-          
-          // Reset balance to $100,000
-          const { error: updateError } = await sbClient.from('paper_accounts')
-            .update({ balance: 100000, updated_at: new Date().toISOString() })
-            .eq('user_id', session.user.id);
-          
-          if (updateError) {
-            console.error('Reset error:', updateError);
-            alert('Failed to reset: ' + updateError.message);
-            return;
-          }
-        }
-        // Show success toast
-        const toast = document.createElement('div');
-        toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:var(--accent);color:#000;font-weight:700;padding:12px 24px;border-radius:8px;z-index:10000;animation:slideDown 0.3s ease;';
-        toast.textContent = '✓ Paper trading reset - All trades deleted, balance $100,000';
-        document.body.appendChild(toast);
-        setTimeout(() => { 
-          toast.remove();
-          window.location.href = 'dashboard.html'; // Go to dashboard to see clean slate
-        }, 1500);
-      });
-    }
-
     async function connectTastyOAuth() {
       const { data: { session } } = await sbClient.auth.getSession();
       if (!session) { alert('Please sign in first'); return; }
@@ -527,7 +461,6 @@
       const paperEnabled = localStorage.getItem('paper_trading_enabled') === 'true';
       if (paperEnabled) {
         const paperBtn = document.getElementById('paper-btn');
-        const resetBtn = document.getElementById('reset-paper-btn');
         if (paperBtn) {
           paperBtn.textContent = 'Enabled ✓';
           paperBtn.style.background = 'transparent';
@@ -535,7 +468,6 @@
           paperBtn.style.color = 'var(--accent)';
           paperBtn.disabled = true;
         }
-        if (resetBtn) resetBtn.style.display = 'inline-block';
       }
 
       // User email in dropdown

@@ -116,6 +116,8 @@
         <div class="sidebar-section">Trading</div>
         <a href="trades.html" class="sidebar-item">Trades</a>
         <a href="brokers.html" class="sidebar-item">Brokers</a>
+        <div class="sidebar-section" style="margin-top:24px;">Help</div>
+        <a href="how-it-works.html" class="sidebar-item">How it Works</a>
       </aside>
 
       <main>
@@ -175,9 +177,12 @@
                 <div class="bac-name">booftrade paper</div>
                 <div class="bac-type">Paper Trading · Simulated</div>
               </div>
-              <div class="bac-balance">
-                <div class="bac-balance-val">$${paperBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                <div class="bac-balance-label">Available Balance</div>
+              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
+                <div class="bac-balance" style="display:flex;flex-direction:column;align-items:flex-end;">
+                  <div class="bac-balance-label">Available Balance</div>
+                  <div class="bac-balance-val">$${paperBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                </div>
+                <button id="reset-paper-btn" style="background:transparent;border:1px solid #555;color:#888;font-size:0.75rem;padding:6px 12px;border-radius:6px;cursor:pointer;font-family:inherit;" onclick="resetPaperBalance()">Reset Paper Trading</button>
               </div>
             </div>`;
         }
@@ -219,6 +224,66 @@
         if (!dropdown.contains(e.target)) {
           dropdown.classList.remove('open');
         }
+      });
+    }
+
+    async function resetPaperBalance() {
+      const overlay = document.createElement('div');
+      overlay.id = 'reset-modal';
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999;';
+      
+      const modal = document.createElement('div');
+      modal.style.cssText = 'background:var(--surface);border-radius:12px;padding:28px 32px;max-width:400px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.5);';
+      
+      modal.innerHTML = `
+        <div style="font-size:2rem;margin-bottom:12px;">🔄</div>
+        <div style="font-size:1.1rem;font-weight:700;color:var(--text);margin-bottom:12px;">Reset Paper Trading?</div>
+        <div style="font-size:0.9rem;color:var(--muted);line-height:1.5;margin-bottom:24px;">This will:<br>• Reset balance to <strong style="color:var(--accent);">$100,000</strong><br>• <strong style="color:var(--red);">Delete ALL trades</strong><br>• Clear your trading history</div>
+        <div style="display:flex;gap:12px;justify-content:center;">
+          <button id="reset-cancel" style="background:transparent;border:1px solid #555;color:#888;font-weight:600;padding:10px 20px;border-radius:8px;cursor:pointer;font-family:inherit;font-size:0.85rem;">Cancel</button>
+          <button id="reset-confirm" style="background:var(--red);color:#fff;font-weight:700;padding:10px 20px;border-radius:8px;border:none;cursor:pointer;font-family:inherit;font-size:0.85rem;">Reset Everything</button>
+        </div>
+      `;
+      
+      overlay.appendChild(modal);
+      document.body.appendChild(overlay);
+      
+      document.getElementById('reset-cancel').addEventListener('click', () => overlay.remove());
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+      
+      document.getElementById('reset-confirm').addEventListener('click', async () => {
+        overlay.remove();
+        localStorage.setItem('paper_balance', '100000');
+        const { data: { session } } = await sbClient.auth.getSession();
+        if (session) {
+          const { error: deleteError } = await sbClient.from('trades')
+            .delete()
+            .eq('user_id', session.user.id);
+          
+          if (deleteError) {
+            console.error('Delete trades error:', deleteError);
+            alert('Failed to delete trades: ' + deleteError.message);
+            return;
+          }
+          
+          const { error: updateError } = await sbClient.from('paper_accounts')
+            .update({ balance: 100000, updated_at: new Date().toISOString() })
+            .eq('user_id', session.user.id);
+          
+          if (updateError) {
+            console.error('Reset error:', updateError);
+            alert('Failed to reset: ' + updateError.message);
+            return;
+          }
+        }
+        const toast = document.createElement('div');
+        toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:var(--accent);color:#000;font-weight:700;padding:12px 24px;border-radius:8px;z-index:10000;animation:slideDown 0.3s ease;';
+        toast.textContent = '✓ Paper trading reset - All trades deleted, balance $100,000';
+        document.body.appendChild(toast);
+        setTimeout(() => { 
+          toast.remove();
+          window.location.href = 'dashboard.html';
+        }, 1500);
       });
     }
 

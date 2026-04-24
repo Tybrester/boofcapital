@@ -78,9 +78,8 @@
         <div class="sidebar-section">Trading</div>
         <a href="trades.html" class="sidebar-item active">Trades</a>
         <a href="brokers.html" class="sidebar-item">Brokers</a>
-        <div class="sidebar-bottom">
-          <button class="sidebar-item" id="signout-btn" style="color:#ff1744;padding:8px 4px;width:100%;">Sign Out</button>
-        </div>
+        <div class="sidebar-section" style="margin-top:24px;">Help</div>
+        <a href="how-it-works.html" class="sidebar-item">How it Works</a>
       </aside>
 
       <main>
@@ -170,18 +169,19 @@
     }
 
     const priceCache = {};
-    async function fetchPrice(symbol) {
+    async function fetchPrice(symbol, forceRefresh = false) {
       if (!symbol) return null;
-      const cached = priceCache[symbol];
-      if (cached && Date.now() - cached.ts < 60000 && cached.price !== null) return cached.price;
+      const normalizedSymbol = normalizeSymbol(symbol);
+      const cached = priceCache[normalizedSymbol];
+      if (!forceRefresh && cached && Date.now() - cached.ts < 30000 && cached.price !== null) return cached.price;
       try {
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/get-price?symbol=${encodeURIComponent(symbol)}`, {
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/get-price?symbol=${encodeURIComponent(normalizedSymbol)}${forceRefresh ? '&nocache=true' : ''}`, {
           headers: { 'apikey': SUPABASE_ANON_KEY }
         });
         const json = await res.json();
-        console.log('[fetchPrice]', symbol, json);
+        console.log('[fetchPrice]', normalizedSymbol, json);
         const price = json.price || null;
-        if (price) priceCache[symbol] = { price, ts: Date.now() };
+        if (price) priceCache[normalizedSymbol] = { price, ts: Date.now() };
         return price;
       } catch(e) { console.error('[fetchPrice error]', e); return null; }
     }
@@ -354,8 +354,7 @@
           const direction  = t.direction || (t.action === 'buy' ? 'Long' : 'Short');
           const currentPrice = await fetchPrice(t.symbol);
           return `<tr>
-            <td style="font-weight:600;">${t.name || t.symbol || '—'} <span class="badge" style="font-size:0.68rem;background:rgba(255,193,7,0.12);color:#ffc107;">Pending</span></td>
-            <td style="color:var(--accent);font-weight:600;">${t.symbol || '—'}</td>
+            <td style="color:var(--text);font-weight:600;">${t.symbol || '—'} <span class="badge" style="font-size:0.68rem;background:rgba(255,193,7,0.12);color:#ffc107;">Pending</span></td>
             <td><span class="badge ${direction === 'Long' ? 'badge-long' : 'badge-short'}">${direction}</span></td>
             <td style="color:var(--muted);font-size:0.78rem;text-transform:uppercase;letter-spacing:0.05em;">${detectAssetType(t.symbol, t.payload)}</td>
             <td>${t.quantity || '—'}</td>
@@ -370,7 +369,7 @@
         }));
         pendingEl.innerHTML = `<table class="trades-table">
           <thead><tr>
-            <th>System</th><th>Symbol</th><th>Side</th><th>Type</th><th>Qty</th>
+            <th>Symbol</th><th>Side</th><th>Type</th><th>Qty</th>
             <th>Market Price</th><th>Est. Cost</th><th>Broker</th><th></th>
           </tr></thead>
           <tbody>${rows.join('')}</tbody>
@@ -413,9 +412,9 @@
           const statusBadge = isFilled
             ? `<span class="badge badge-long" style="margin-left:6px;font-size:0.68rem;">Filled</span>`
             : `<span class="badge" style="margin-left:6px;font-size:0.68rem;background:rgba(255,193,7,0.12);color:#ffc107;">Pending</span>`;
+          const filledAt = t.filled_at ? new Date(t.filled_at).toLocaleString() : '—';
           return `<tr>
-            <td style="font-weight:600;">${t.name || t.symbol || '—'}${statusBadge}</td>
-            <td style="color:var(--accent);font-weight:600;">${t.symbol || '—'}</td>
+            <td style="color:var(--text);font-weight:600;">${t.symbol || '—'}${statusBadge}</td>
             <td><span class="badge ${direction === 'Long' ? 'badge-long' : 'badge-short'}">${direction}</span></td>
             <td style="color:var(--muted);font-size:0.78rem;text-transform:uppercase;letter-spacing:0.05em;">${detectAssetType(t.symbol, t.payload)}</td>
             <td>${t.quantity || '—'}</td>
@@ -423,6 +422,7 @@
             <td>${currentPrice ? '$'+currentPrice.toFixed(2) : '—'}</td>
             <td>${pnlHtml}</td>
             <td style="color:var(--muted);font-size:0.8rem;">${t.broker || 'paper'}</td>
+            <td style="color:var(--muted);font-size:0.78rem;">${filledAt}</td>
             <td style="display:flex;gap:6px;">
               ${!isFilled ? `<button class="btn-close-trade" style="border-color:var(--accent);color:var(--accent);" onclick="fillTrade('${t.id}','${t.action||'buy'}',${currentPrice||entryPrice||0},${t.quantity||1})">Fill</button>` : ''}
               <button class="btn-close-trade" onclick="closeTrade('${t.id}','${t.symbol}','${direction}',${entryPrice||0},${t.quantity||1},'${t.broker||'paper'}')">Close</button>
@@ -431,8 +431,8 @@
         }));
         openEl.innerHTML = `<table class="trades-table">
           <thead><tr>
-            <th>System</th><th>Symbol</th><th>Side</th><th>Type</th><th>Qty</th>
-            <th>Entry</th><th>Current</th><th>P&L</th><th>Broker</th><th></th>
+            <th>Symbol</th><th>Side</th><th>Type</th><th>Qty</th>
+            <th>Entry</th><th>Current</th><th>P&L</th><th>Broker</th><th>Time Filled</th><th></th>
           </tr></thead>
           <tbody>${rows.join('')}</tbody>
         </table>`;
@@ -449,8 +449,7 @@
             ? `<span class="${pnl >= 0 ? 'pnl-pos' : 'pnl-neg'}">${pnl >= 0 ? '+' : ''}$${Number(pnl).toFixed(2)}</span>`
             : '—';
           return `<tr>
-            <td style="font-weight:600;">${t.name || t.symbol || '—'}</td>
-            <td style="color:var(--accent);font-weight:600;">${t.symbol || '—'}</td>
+            <td style="color:var(--text);font-weight:600;">${t.symbol || '—'}</td>
             <td><span class="badge ${direction === 'Long' ? 'badge-long' : 'badge-short'}">${direction}</span></td>
             <td>${t.quantity || '—'}</td>
             <td>${entryPrice ? '$'+Number(entryPrice).toFixed(2) : '—'}</td>
@@ -461,7 +460,7 @@
         });
         closedEl.innerHTML = `<table class="trades-table">
           <thead><tr>
-            <th>System</th><th>Symbol</th><th>Side</th><th>Qty</th>
+            <th>Symbol</th><th>Side</th><th>Qty</th>
             <th>Entry</th><th>P&L</th><th>Broker</th><th>Closed</th>
           </tr></thead>
           <tbody>${rows.join('')}</tbody>
@@ -476,22 +475,18 @@
           const entryPrice = t.entry_price ?? t.price;
           const direction  = t.direction || (t.action === 'buy' ? 'Long' : 'Short');
           return `<tr>
-            <td style="font-weight:600;">${t.name || t.symbol || '—'}</td>
-            <td style="color:var(--red);font-weight:600;">${t.symbol || '—'}</td>
+            <td style="color:var(--text);font-weight:600;">${t.symbol || '—'}</td>
             <td><span class="badge ${direction === 'Long' ? 'badge-long' : 'badge-short'}">${direction}</span></td>
-            <td><span class="badge" style="background:rgba(255,23,68,0.12);color:var(--red);">FAILED</span></td>
             <td>${t.quantity || '—'}</td>
             <td>${entryPrice ? '$'+Number(entryPrice).toFixed(2) : '—'}</td>
-            <td style="color:var(--muted);">—</td>
             <td style="color:var(--red);font-size:0.85rem;">${t.failure_reason || 'Insufficient balance'}</td>
-            <td style="color:var(--muted);font-size:0.8rem;">${t.broker || 'paper'}</td>
             <td><button class="btn-icon" onclick="retryTrade('${t.id}')" title="Retry">↻</button></td>
           </tr>`;
         });
         failedEl.innerHTML = `<table class="trades-table">
           <thead><tr>
-            <th>System</th><th>Symbol</th><th>Side</th><th>Type</th><th>Qty</th>
-            <th>Entry</th><th>P&L</th><th>Reason</th><th>Broker</th><th></th>
+            <th>Symbol</th><th>Side</th><th>Qty</th>
+            <th>Entry</th><th>Reason</th><th></th>
           </tr></thead>
           <tbody>${rows.join('')}</tbody>
         </table>`;
@@ -616,10 +611,7 @@
       
       document.getElementById('loading-screen').style.display = 'none';
       document.getElementById('app').style.display = 'flex';
-      document.getElementById('signout-btn').addEventListener('click', async () => {
-        await sbClient.auth.signOut(); window.location.href = 'index.html';
-      });
-      
+
       // User dropdown toggle
       const dropdown = document.getElementById('user-dropdown');
       const toggle = document.getElementById('user-email-toggle');

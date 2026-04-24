@@ -152,6 +152,8 @@
         <div class="sidebar-section">Trading</div>
         <a href="trades.html" class="sidebar-item">Trades</a>
         <a href="brokers.html" class="sidebar-item">Brokers</a>
+        <div class="sidebar-section" style="margin-top:24px;">Help</div>
+        <a href="how-it-works.html" class="sidebar-item">How it Works</a>
       </aside>
 
       <main>
@@ -175,37 +177,29 @@
           <div class="section-title">JSON Message Builder</div>
           <p style="color:var(--muted);font-size:0.85rem;margin-bottom:20px;">Build a webhook JSON payload to paste into TradingView alerts.</p>
           <div style="display:flex;gap:8px;margin-bottom:24px;">
-            <button onclick="switchAssetType('equities')" id="jat-equities" style="padding:7px 18px;border-radius:20px;border:1px solid var(--accent);background:var(--accent);color:#000;font-weight:700;font-size:0.8rem;cursor:pointer;font-family:inherit;">Equities (Stock/Crypto/Options)</button>
-            <button onclick="switchAssetType('futures')" id="jat-futures" style="padding:7px 18px;border-radius:20px;border:1px solid #2a2a2a;background:transparent;color:var(--muted);font-weight:700;font-size:0.8rem;cursor:pointer;font-family:inherit;">Futures</button>
-          </div>
-          <div id="options-toggle-row" style="margin-bottom:16px;max-width:760px;">
-            <label class="toggle-switch" style="display:flex;align-items:center;gap:12px;cursor:pointer;">
-              <input type="checkbox" id="options-toggle" onchange="toggleOptionsFields()" style="display:none;"/>
-              <span class="toggle-slider" style="position:relative;width:44px;height:24px;background:#2a2a2a;border-radius:12px;transition:background 0.2s;"></span>
-              <span style="font-size:0.85rem;color:var(--muted);">Enable Options Fields</span>
-            </label>
-          </div>
-          <div style="margin-bottom:20px;max-width:760px;">
-            <label style="font-size:0.78rem;color:var(--muted);display:block;margin-bottom:6px;">System (Webhook)</label>
-            <select id="json-system" style="width:100%;background:#111;border:1px solid #2a2a2a;color:var(--text);padding:9px 12px;border-radius:8px;font-family:inherit;font-size:0.85rem;outline:none;" onchange="buildJSONPreview()"><option value="">— Select a system —</option></select>
-            <div id="json-webhook-url" style="margin-top:8px;font-size:0.72rem;color:#444;font-family:'Courier New',monospace;background:#0d0d0d;border:1px solid #1f1f1f;border-radius:6px;padding:8px 12px;word-break:break-all;display:none;"></div>
+            <button onclick="switchAssetType('standard')" id="jat-standard" style="padding:7px 18px;border-radius:20px;border:1px solid var(--accent);background:var(--accent);color:#000;font-weight:700;font-size:0.8rem;cursor:pointer;font-family:inherit;">Stock / Crypto / Futures</button>
+            <button onclick="switchAssetType('options')" id="jat-options" style="padding:7px 18px;border-radius:20px;border:1px solid #2a2a2a;background:transparent;color:var(--muted);font-weight:700;font-size:0.8rem;cursor:pointer;font-family:inherit;">Options</button>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:760px;">
             <div><label style="font-size:0.78rem;color:var(--muted);display:block;margin-bottom:6px;">Action</label><select id="json-action" style="width:100%;background:#111;border:1px solid #2a2a2a;color:var(--text);padding:9px 12px;border-radius:8px;font-family:inherit;font-size:0.85rem;outline:none;" onchange="buildJSONPreview()"><option value="buy">buy</option><option value="sell">sell</option></select></div>
-            <div><label style="font-size:0.78rem;color:var(--muted);display:block;margin-bottom:6px;">Symbol <span style="color:#555;">(use {{ticker}} for dynamic)</span></label><input id="json-symbol" type="text" placeholder="{{ticker}}" style="width:100%;background:#111;border:1px solid #2a2a2a;color:var(--text);padding:9px 12px;border-radius:8px;font-family:inherit;font-size:0.85rem;outline:none;box-sizing:border-box;" oninput="buildJSONPreview()" /></div>
+            <div><label style="font-size:0.78rem;color:var(--muted);display:block;margin-bottom:6px;">Symbol <span style="color:#555;">(use {{ticker}} for default)</span></label><input id="json-symbol" type="text" placeholder="{{ticker}}" style="width:100%;background:#111;border:1px solid #2a2a2a;color:var(--text);padding:9px 12px;border-radius:8px;font-family:inherit;font-size:0.85rem;outline:none;box-sizing:border-box;" oninput="buildJSONPreview()" /></div>
             <div><label style="font-size:0.78rem;color:var(--muted);display:block;margin-bottom:6px;">Quantity</label><input id="json-qty" type="number" value="1" min="1" style="width:100%;background:#111;border:1px solid #2a2a2a;color:var(--text);padding:9px 12px;border-radius:8px;font-family:inherit;font-size:0.85rem;outline:none;box-sizing:border-box;" oninput="buildJSONPreview()" /></div>
-            <div><label style="font-size:0.78rem;color:var(--muted);display:block;margin-bottom:6px;">Order Type</label><select id="json-order-type" style="width:100%;background:#111;border:1px solid #2a2a2a;color:var(--text);padding:9px 12px;border-radius:8px;font-family:inherit;font-size:0.85rem;outline:none;" onchange="buildJSONPreview()"><option value="market">market</option><option value="limit">limit</option></select></div>
+            <div><label style="font-size:0.78rem;color:var(--muted);display:block;margin-bottom:6px;">Order Type</label><select id="json-order-type" style="width:100%;background:#111;border:1px solid #2a2a2a;color:var(--text);padding:9px 12px;border-radius:8px;font-family:inherit;font-size:0.85rem;outline:none;" onchange="buildJSONPreview()"><option value="market" selected>market</option></select></div>
             <div><label style="font-size:0.78rem;color:var(--muted);display:block;margin-bottom:6px;">Broker</label><select id="json-broker" style="width:100%;background:#111;border:1px solid #2a2a2a;color:var(--text);padding:9px 12px;border-radius:8px;font-family:inherit;font-size:0.85rem;outline:none;" onchange="buildJSONPreview()"><option value="paper">EasyTrade Paper</option><option value="tastytrade">tastytrade</option></select></div>
-            <div><label style="font-size:0.78rem;color:var(--muted);display:block;margin-bottom:6px;">Price <span style="color:#555;">(use {{close}} for dynamic)</span></label><input id="json-price" type="text" placeholder="{{close}}" style="width:100%;background:#111;border:1px solid #2a2a2a;color:var(--text);padding:9px 12px;border-radius:8px;font-family:inherit;font-size:0.85rem;outline:none;box-sizing:border-box;" oninput="buildJSONPreview()" /></div>
+            <div><label style="font-size:0.78rem;color:var(--muted);display:block;margin-bottom:6px;">Price <span style="color:#555;">(use {{close}} for default)</span></label><input id="json-price" type="text" placeholder="{{close}}" style="width:100%;background:#111;border:1px solid #2a2a2a;color:var(--text);padding:9px 12px;border-radius:8px;font-family:inherit;font-size:0.85rem;outline:none;box-sizing:border-box;" oninput="buildJSONPreview()" /></div>
           </div>
           <div id="json-options-fields" style="display:none;grid-template-columns:1fr 1fr;gap:16px;max-width:760px;margin-top:16px;">
             <div><label style="font-size:0.78rem;color:var(--muted);display:block;margin-bottom:6px;">Contract</label><select id="json-contract" style="width:100%;background:#111;border:1px solid #2a2a2a;color:var(--text);padding:9px 12px;border-radius:8px;font-family:inherit;font-size:0.85rem;outline:none;" onchange="buildJSONPreview()"><option value="call">Call</option><option value="put">Put</option></select></div>
             <div><label style="font-size:0.78rem;color:var(--muted);display:block;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;">Strike Price<a id="options-chain-link" href="https://finance.yahoo.com/quote/AAPL/options/" target="_blank" style="font-size:0.72rem;color:var(--accent);text-decoration:none;font-weight:600;">View Chain ↗</a></label><input id="json-strike" type="number" placeholder="e.g. 215" style="width:100%;background:#111;border:1px solid #2a2a2a;color:var(--text);padding:9px 12px;border-radius:8px;font-family:inherit;font-size:0.85rem;outline:none;box-sizing:border-box;" oninput="buildJSONPreview()" /></div>
-            <div><label style="font-size:0.78rem;color:var(--muted);display:block;margin-bottom:6px;">Expiry Date</label><input id="json-expiry" type="date" style="width:100%;background:#111;border:1px solid #2a2a2a;color:var(--text);padding:9px 12px;border-radius:8px;font-family:inherit;font-size:0.85rem;outline:none;box-sizing:border-box;" onchange="buildJSONPreview()" /></div>
-          </div>
-          <div id="json-futures-fields" style="display:none;grid-template-columns:1fr 1fr;gap:16px;max-width:760px;margin-top:16px;">
-            <div><label style="font-size:0.78rem;color:var(--muted);display:block;margin-bottom:6px;">Direction</label><select id="json-direction" style="width:100%;background:#111;border:1px solid #2a2a2a;color:var(--text);padding:9px 12px;border-radius:8px;font-family:inherit;font-size:0.85rem;outline:none;" onchange="buildJSONPreview()"><option value="Long">Long</option><option value="Short">Short</option></select></div>
-            <div><label style="font-size:0.78rem;color:var(--muted);display:block;margin-bottom:6px;">Entry Price</label><input id="json-entry" type="number" placeholder="Leave blank for market" style="width:100%;background:#111;border:1px solid #2a2a2a;color:var(--text);padding:9px 12px;border-radius:8px;font-family:inherit;font-size:0.85rem;outline:none;box-sizing:border-box;" oninput="buildJSONPreview()" /></div>
+            <div>
+              <label style="font-size:0.78rem;color:var(--muted);display:block;margin-bottom:6px;">Expiry</label>
+              <div style="display:flex;gap:8px;margin-bottom:6px;">
+                <button type="button" id="expiry-toggle-date" onclick="toggleExpiryMode('date')" style="flex:1;padding:6px 10px;border-radius:6px;border:1px solid var(--accent);background:var(--accent);color:#000;font-size:0.75rem;font-weight:600;cursor:pointer;font-family:inherit;">Date</button>
+                <button type="button" id="expiry-toggle-days" onclick="toggleExpiryMode('days')" style="flex:1;padding:6px 10px;border-radius:6px;border:1px solid #2a2a2a;background:transparent;color:var(--muted);font-size:0.75rem;font-weight:600;cursor:pointer;font-family:inherit;">+Days</button>
+              </div>
+              <input id="json-expiry" type="date" style="width:100%;background:#111;border:1px solid #2a2a2a;color:var(--text);padding:9px 12px;border-radius:8px;font-family:inherit;font-size:0.85rem;outline:none;box-sizing:border-box;" onchange="buildJSONPreview()" />
+              <input id="json-expiry-days" type="text" placeholder="e.g. +6 days" style="display:none;width:100%;background:#111;border:1px solid #2a2a2a;color:var(--text);padding:9px 12px;border-radius:8px;font-family:inherit;font-size:0.85rem;outline:none;box-sizing:border-box;" oninput="buildJSONPreview()" />
+            </div>
           </div>
           <div style="margin-top:24px;max-width:760px;">
             <label style="font-size:0.78rem;color:var(--muted);display:block;margin-bottom:8px;">JSON Preview</label>
@@ -385,19 +379,6 @@
           window.location.href = 'system-edit.html?id=' + s.id;
         });
 
-        // ID box
-        const idBox = document.createElement('div');
-        idBox.style.cssText = 'font-size:0.72rem;color:#444;font-family:Courier New,monospace;background:#0d0d0d;border:1px solid #1f1f1f;border-radius:6px;padding:6px 10px;display:flex;align-items:center;justify-content:space-between;gap:8px;';
-        const idSpan = document.createElement('span');
-        idSpan.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-        idSpan.textContent = s.id;
-        const copyBtn = document.createElement('button');
-        copyBtn.textContent = 'Copy';
-        copyBtn.style.cssText = 'background:none;border:none;color:#555;font-size:0.72rem;cursor:pointer;font-family:inherit;flex-shrink:0;padding:0;';
-        copyBtn.addEventListener('click', () => { navigator.clipboard.writeText(s.id); copyBtn.textContent = '✓'; setTimeout(() => copyBtn.textContent = 'Copy', 1200); });
-        idBox.appendChild(idSpan);
-        idBox.appendChild(copyBtn);
-
         // Toggles
         const toggles = document.createElement('div');
         toggles.className = 'sc-toggles';
@@ -426,7 +407,6 @@
         footer.appendChild(delBtn);
 
         card.appendChild(header);
-        card.appendChild(idBox);
         card.appendChild(toggles);
         card.appendChild(footer);
         grid.appendChild(card);
@@ -446,24 +426,14 @@
       document.getElementById('create-sys-btn').style.display = tab === 'systems' ? '' : 'none';
     }
 
-    let currentAssetType = 'equities';
+    let currentAssetType = 'standard';
     function switchAssetType(type) {
       currentAssetType = type;
-      ['equities','futures'].forEach(t => {
+      ['standard','options'].forEach(t => {
         const btn = document.getElementById('jat-' + t);
         if (btn) { btn.style.background = t === type ? 'var(--accent)' : 'transparent'; btn.style.color = t === type ? '#000' : 'var(--muted)'; btn.style.borderColor = t === type ? 'var(--accent)' : '#2a2a2a'; }
       });
-      document.getElementById('options-toggle-row').style.display = type === 'equities' ? 'block' : 'none';
-      document.getElementById('json-options-fields').style.display = (type === 'equities' && document.getElementById('options-toggle')?.checked) ? 'grid' : 'none';
-      document.getElementById('json-futures-fields').style.display = type === 'futures' ? 'grid' : 'none';
-      buildJSONPreview();
-    }
-
-    function toggleOptionsFields() {
-      const isChecked = document.getElementById('options-toggle')?.checked;
-      document.getElementById('json-options-fields').style.display = isChecked ? 'grid' : 'none';
-      const slider = document.querySelector('#options-toggle-row .toggle-slider');
-      if (slider) { slider.style.background = isChecked ? 'var(--accent)' : '#2a2a2a'; }
+      document.getElementById('json-options-fields').style.display = type === 'options' ? 'grid' : 'none';
       buildJSONPreview();
     }
 
@@ -477,22 +447,20 @@
       const priceRaw  = document.getElementById('json-price')?.value.trim();
       const price     = priceRaw || '{{close}}';
 
-      const systemSel  = document.getElementById('json-system');
-      const webhookEl  = document.getElementById('json-webhook-url');
-      const selectedOpt = systemSel?.options[systemSel.selectedIndex];
-      const webhookUrl = selectedOpt?.dataset?.url || '';
-      if (webhookUrl) { webhookEl.textContent = '🔗 ' + webhookUrl; webhookEl.style.display = 'block'; }
-      else { webhookEl.style.display = 'none'; }
-
       const payload = { action, symbol, quantity: qty, order_type: orderType, broker, price, time: '{{time}}' };
-      if (currentAssetType === 'equities' && document.getElementById('options-toggle')?.checked) {
+      if (currentAssetType === 'options') {
         payload.contract = document.getElementById('json-contract')?.value || 'call';
         const strike = document.getElementById('json-strike')?.value;
-        const expiry = document.getElementById('json-expiry')?.value;
         if (strike) payload.strike = parseFloat(strike);
-        if (expiry) payload.expiry = expiry;
-      } else if (currentAssetType === 'futures') {
-        payload.direction = document.getElementById('json-direction')?.value || 'Long';
+        
+        // Handle expiry: date or days
+        if (expiryMode === 'date') {
+          const expiry = document.getElementById('json-expiry')?.value;
+          if (expiry) payload.expiry = expiry;
+        } else {
+          const days = document.getElementById('json-expiry-days')?.value;
+          if (days) payload.expiry = days;
+        }
       }
       document.getElementById('json-preview').textContent = JSON.stringify(payload, null, 2);
 
@@ -500,22 +468,33 @@
       if (chainLink) { const sym = symbolRaw && !symbolRaw.includes('{{') ? symbolRaw.toUpperCase() : 'AAPL'; chainLink.href = `https://finance.yahoo.com/quote/${sym}/options/`; chainLink.textContent = `View ${sym} Chain ↗`; }
     }
 
+    let expiryMode = 'date';
+    function toggleExpiryMode(mode) {
+      expiryMode = mode;
+      const dateBtn = document.getElementById('expiry-toggle-date');
+      const daysBtn = document.getElementById('expiry-toggle-days');
+      const dateInput = document.getElementById('json-expiry');
+      const daysInput = document.getElementById('json-expiry-days');
+      
+      if (mode === 'date') {
+        dateBtn.style.background = 'var(--accent)'; dateBtn.style.color = '#000'; dateBtn.style.borderColor = 'var(--accent)';
+        daysBtn.style.background = 'transparent'; daysBtn.style.color = 'var(--muted)'; daysBtn.style.borderColor = '#2a2a2a';
+        dateInput.style.display = 'block';
+        daysInput.style.display = 'none';
+      } else {
+        daysBtn.style.background = 'var(--accent)'; daysBtn.style.color = '#000'; daysBtn.style.borderColor = 'var(--accent)';
+        dateBtn.style.background = 'transparent'; dateBtn.style.color = 'var(--muted)'; dateBtn.style.borderColor = '#2a2a2a';
+        dateInput.style.display = 'none';
+        daysInput.style.display = 'block';
+      }
+      buildJSONPreview();
+    }
+
     function copyJSON() {
       const text = document.getElementById('json-preview').textContent;
       navigator.clipboard.writeText(text).then(() => {
         const btn = document.querySelector('[onclick="copyJSON()"]');
         const orig = btn.textContent; btn.textContent = 'Copied!'; setTimeout(() => btn.textContent = orig, 1500);
-      });
-    }
-
-    async function loadSystemsDropdown() {
-      const sel = document.getElementById('json-system');
-      const { data } = await sbClient.from('systems').select('id,name').eq('user_id', currentUserId);
-      (data || []).forEach(s => {
-        const opt = document.createElement('option');
-        opt.value = s.id; opt.textContent = s.name;
-        opt.dataset.url = `${SUPABASE_URL}/functions/v1/trade-webhook?user_id=${currentUserId}&system_id=${s.id}`;
-        sel.appendChild(opt);
       });
     }
 
@@ -529,7 +508,6 @@
       document.getElementById('app').style.display = 'flex';
 
       loadSystems();
-      await loadSystemsDropdown();
       buildJSONPreview();
 
       document.getElementById('delete-close').addEventListener('click', () => document.getElementById('delete-modal').classList.remove('open'));

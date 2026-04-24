@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>How it Works - EasyTrade</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <style>
+    :root { --bg:#0b0b0b; --surface:#141414; --border:#1f1f1f; --text:#f5f5f5; --muted:#888; --accent:#00e676; --red:#ff1744; }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, sans-serif; }
+
+    #loading-screen { position: fixed; inset: 0; background: var(--bg); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+    .spinner { width: 40px; height: 40px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #app { display: none; flex-direction: column; height: 100%; }
+
+    nav { display: flex; align-items: center; justify-content: space-between; padding: 14px 28px; border-bottom: 1px solid var(--border); background: var(--surface); }
+    .logo { font-size: 1.25rem; font-weight: 800; color: var(--text); text-decoration: none; letter-spacing: -0.02em; }
+
+    .user-dropdown { position: relative; }
+    .user-dropdown-toggle { display: flex; align-items: center; gap: 8px; padding: 8px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; font-size: 0.88rem; color: var(--muted); font-weight: 500; cursor: pointer; transition: all 0.2s; }
+    .user-dropdown-toggle:hover { background: #1a1a1a; color: var(--text); }
+    .user-dropdown-toggle::after { content: '▾'; font-size: 0.7rem; color: var(--accent); }
+    .user-dropdown-menu { position: absolute; top: calc(100% + 8px); right: 0; min-width: 180px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 8px 0; box-shadow: 0 10px 30px rgba(0,0,0,0.4); opacity: 0; visibility: hidden; transform: translateY(-8px); transition: all 0.2s; z-index: 100; }
+    .user-dropdown.open .user-dropdown-menu { opacity: 1; visibility: visible; transform: translateY(0); }
+    .user-dropdown-item { display: flex; align-items: center; gap: 10px; padding: 10px 16px; font-size: 0.85rem; color: var(--text); cursor: pointer; transition: background 0.2s; border: none; background: none; width: 100%; text-align: left; font-family: inherit; }
+    .user-dropdown-item:hover { background: rgba(255,255,255,0.05); }
+    .user-dropdown-item.red { color: var(--red); }
+    .nav-right { display: flex; align-items: center; gap: 16px; }
+
+    .layout { display: flex; flex: 1; overflow: hidden; }
+    .sidebar { width: 220px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 20px 0; }
+    .sidebar-section { font-size: 0.7rem; font-weight: 700; color: #555; text-transform: uppercase; letter-spacing: 0.08em; padding: 16px 20px 8px; }
+    .sidebar-item { display: flex; align-items: center; gap: 10px; padding: 10px 20px; font-size: 0.88rem; color: var(--muted); text-decoration: none; transition: all 0.15s; }
+    .sidebar-item:hover { color: var(--text); background: rgba(255,255,255,0.03); }
+    .sidebar-item.active { background: rgba(0,230,118,0.08); color: var(--accent); font-weight: 600; }
+    .sidebar-item.active::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--accent); border-radius: 0 2px 2px 0; }
+
+    main { flex: 1; padding: 28px 36px; overflow-y: auto; }
+    .page-header { margin-bottom: 28px; }
+    .page-header h1 { font-size: 1.6rem; font-weight: 700; margin: 0 0 8px; }
+    .page-header p { color: var(--muted); font-size: 0.9rem; margin: 0; }
+
+    .section-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin-bottom: 24px; }
+    .section-card-title { font-size: 0.75rem; font-weight: 700; color: #777; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 16px; }
+
+    .step { display: flex; gap: 16px; margin-bottom: 24px; }
+    .step:last-child { margin-bottom: 0; }
+    .step-num { width: 36px; height: 36px; border-radius: 50%; background: var(--accent); color: #000; font-weight: 700; font-size: 0.9rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .step-content h3 { font-size: 1rem; font-weight: 600; margin: 0 0 6px; color: var(--text); }
+    .step-content p { font-size: 0.85rem; color: var(--muted); margin: 0; line-height: 1.5; }
+    .step-content code { background: #0d0d0d; padding: 2px 6px; border-radius: 4px; font-family: 'Courier New', monospace; font-size: 0.8rem; color: #7fffb2; }
+
+    @media (max-width: 900px) { .sidebar { display: none; } }
+  </style>
+</head>
+<body>
+
+  <div id="loading-screen"><div class="spinner"></div></div>
+
+  <div id="app">
+    <nav>
+      <a href="dashboard.html" class="logo">Boof<span style="color:var(--accent);">Trade</span></a>
+      <div class="nav-right">
+        <div class="user-dropdown" id="user-dropdown">
+          <button class="user-dropdown-toggle" id="user-email-toggle">
+            <span id="user-email"></span>
+          </button>
+          <div class="user-dropdown-menu">
+            <button class="user-dropdown-item red" onclick="signOut()">
+              <span>🚪</span> Sign Out
+            </button>
+          </div>
+        </div>
+      </div>
+    </nav>
+
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="sidebar-section">Menu</div>
+        <a href="dashboard.html" class="sidebar-item">Dashboard</a>
+        <a href="alerts.html" class="sidebar-item">Systems</a>
+        <a href="accounts.html" class="sidebar-item">Accounts</a>
+        <div class="sidebar-section">Trading</div>
+        <a href="trades.html" class="sidebar-item">Trades</a>
+        <a href="brokers.html" class="sidebar-item">Brokers</a>
+        <div class="sidebar-section" style="margin-top:24px;">Help</div>
+        <a href="how-it-works.html" class="sidebar-item active">How it Works</a>
+      </aside>
+
+      <main>
+        <div class="page-header">
+          <h1>How it Works</h1>
+          <p>Get started with automated trading in 4 simple steps</p>
+        </div>
+
+        <div class="section-card">
+          <div class="section-card-title">Quick Start Guide</div>
+          
+          <div class="step">
+            <div class="step-num">1</div>
+            <div class="step-content">
+              <h3>Create a System</h3>
+              <p>Go to <strong>Systems</strong> and click "Create System". Give it a name, select your broker (paper trading or real), and enable "Auto Submit" if you want trades to fill automatically.</p>
+            </div>
+          </div>
+
+          <div class="step">
+            <div class="step-num">2</div>
+            <div class="step-content">
+              <h3>Get Your Webhook URL</h3>
+              <p>After creating a system, copy the webhook URL. This is where you'll send trade alerts from TradingView or other platforms.</p>
+            </div>
+          </div>
+
+          <div class="step">
+            <div class="step-num">3</div>
+            <div class="step-content">
+              <h3>Send a Trade Alert</h3>
+              <p>Use our JSON builder or send a POST request with your trade details:</p>
+              <p style="margin-top:8px;"><code>{ "ticker": "{{ticker}}", "action": "buy", "quantity": 1, "orderType": "MARKET", "price": "{{close}}" }</code></p>
+            </div>
+          </div>
+
+          <div class="step">
+            <div class="step-num">4</div>
+            <div class="step-content">
+              <h3>Monitor Your Trades</h3>
+              <p>View all your trades in the <strong>Trades</strong> page. Open positions show live P&L, and you can close trades manually or let them auto-fill based on your settings.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-card">
+          <div class="section-card-title">Supported Asset Types</div>
+          <div class="step">
+            <div class="step-num" style="background:#444;color:#fff;">📈</div>
+            <div class="step-content">
+              <h3>Stocks, Crypto & Futures</h3>
+              <p>Standard trading with automatic price fetching and P&L calculation. Use the standard JSON format for all three.</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num" style="background:#444;color:#fff;">⚡</div>
+            <div class="step-content">
+              <h3>Options</h3>
+              <p>Add <code>contract</code> (call/put), <code>strike</code>, and <code>expiry</code> fields to your JSON for options trading. 100x multiplier applied automatically.</p>
+            </div>
+          </div>
+        </div>
+
+        <div style="text-align:center;padding:24px;font-size:0.85rem;color:#666;margin-top:auto;">
+          Contact: <a href="mailto:booftrade@gmail.com" style="color:var(--muted);text-decoration:none;">booftrade@gmail.com</a>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    const SUPABASE_URL = 'https://isanhutzyctcjygjhzbn.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlzYW5odXR6eWN0Y2p5Z2poemJuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxMTYzNDYsImV4cCI6MjA5MTY5MjM0Nn0.L0ATp-IriR708C2n3as_YXDgjHvtn_CWubbzPeSxRi0';
+    const sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    async function init() {
+      const { data: { session } } = await sbClient.auth.getSession();
+      if (!session) { window.location.href = 'signin.html'; return; }
+      
+      document.getElementById('user-email').textContent = session.user.email || 'User';
+      
+      document.getElementById('loading-screen').style.display = 'none';
+      document.getElementById('app').style.display = 'flex';
+
+      const dropdown = document.getElementById('user-dropdown');
+      const toggle = document.getElementById('user-email-toggle');
+      
+      toggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        dropdown.classList.toggle('open');
+      });
+
+      document.addEventListener('click', (e) => {
+        if (!dropdown.contains(e.target)) {
+          dropdown.classList.remove('open');
+        }
+      });
+    }
+
+    async function signOut() {
+      await sbClient.auth.signOut();
+      window.location.href = 'index.html';
+    }
+
+    init();
+  </script>
+</body>
+</html>

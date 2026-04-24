@@ -97,6 +97,7 @@ Deno.serve(async (req) => {
     }
 
     // Insert trade record with final status
+    const now = new Date().toISOString();
     const { data: trade, error: tradeErr } = await supabase.from('trades').insert({
       user_id: userId,
       system_id: systemId,
@@ -108,8 +109,9 @@ Deno.serve(async (req) => {
       broker,
       status: tradeStatus,
       failure_reason: failureReason,
+      filled_at: tradeStatus === 'filled' ? now : null,
       payload: body,
-      created_at: new Date().toISOString(),
+      created_at: now,
     }).select().single();
 
     if (tradeErr) {

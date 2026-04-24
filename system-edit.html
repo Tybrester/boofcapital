@@ -141,6 +141,8 @@
         <div class="sidebar-section">Trading</div>
         <a href="trades.html" class="sidebar-item">Trades</a>
         <a href="brokers.html" class="sidebar-item">Brokers</a>
+        <div class="sidebar-section" style="margin-top:24px;">Help</div>
+        <a href="how-it-works.html" class="sidebar-item">How it Works</a>
       </aside>
 
       <main>
@@ -192,12 +194,6 @@
             <span class="webhook-url" id="webhook-url" onclick="this.parentElement.querySelector('.copy-btn').click()">Loading...</span>
             <button class="copy-btn" onclick="copyWebhook()">Copy</button>
           </div>
-        </div>
-
-        <!-- SYSTEM ID -->
-        <div class="section-card">
-          <div class="section-card-title">System ID</div>
-          <div class="id-box" id="system-id-display">—</div>
         </div>
 
         <!-- ACTIONS -->
@@ -362,7 +358,6 @@
       document.getElementById('edit-name').value = sys.name;
       document.getElementById('edit-enabled').checked = !!sys.enabled;
       document.getElementById('edit-auto-submit').checked = !!sys.auto_submit;
-      document.getElementById('system-id-display').textContent = sys.id;
     }
 
     init();

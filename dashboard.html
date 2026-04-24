@@ -398,7 +398,6 @@
     .positions-table tr:hover td { background: rgba(255,255,255,0.02); }
 
     .empty-positions { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 48px 24px; text-align: center; color: var(--muted); font-size: 0.9rem; }
-    .empty-positions-icon { font-size: 2rem; margin-bottom: 10px; }
   </style>
 </head>
 <body>
@@ -444,17 +443,11 @@
       <a href="brokers.html" class="sidebar-item">
         <span class="sidebar-icon"></span> Brokers
       </a>
+      <div class="sidebar-section" style="margin-top:24px;">Help</div>
+      <a href="how-it-works.html" class="sidebar-item">
+        <span class="sidebar-icon"></span> How it Works
+      </a>
 
-
-      <div class="sidebar-bottom">
-        <a href="#" class="sidebar-item" style="padding:8px 4px;">
-          <span class="sidebar-icon"></span> Account
-          <span class="sidebar-arrow">›</span>
-        </a>
-        <button class="sidebar-item" id="signout-btn" style="color:#ff1744;padding:8px 4px;width:100%;">
-          <span class="sidebar-icon"></span> Sign Out
-        </button>
-      </div>
     </aside>
 
     <main>
@@ -498,7 +491,6 @@
       <div class="section-title">Open Positions</div>
       <div id="positions-container">
         <div class="empty-positions">
-          <div class="empty-positions-icon">📊</div>
           <div>No open positions</div>
           <div style="font-size:0.78rem;color:#444;margin-top:4px;">Trades will appear here once your system executes an order</div>
         </div>
@@ -628,9 +620,9 @@
             console.log('Normalized:', normalizedSymbol);
             console.log('Entry price:', t.price, 'Current: ???');
             console.log('Quantity:', t.quantity, 'Action:', t.action);
-            const res = await fetch(`${SUPABASE_URL}/functions/v1/get-price?symbol=${encodeURIComponent(t.symbol)}`, { headers: { 'apikey': SUPABASE_ANON_KEY } });
+            const res = await fetch(`${SUPABASE_URL}/functions/v1/get-price?symbol=${encodeURIComponent(normalizedSymbol)}`, { headers: { 'apikey': SUPABASE_ANON_KEY } });
             const j = await res.json();
-            console.log('Fetched current price:', j.price);
+            console.log('Fetched current price for', normalizedSymbol, ':', j.price);
             if (j.price && t.price) {
               const pointDiff = t.action === 'buy' ? (j.price - t.price) : (t.price - j.price);
               // Check if options by symbol pattern (contains date and C/P)
@@ -683,12 +675,13 @@
         const posContainer = document.getElementById('positions-container');
         if (posContainer) {
           if (openTrades.length === 0) {
-            posContainer.innerHTML = `<div class="empty-positions"><div class="empty-positions-icon">📊</div><div>No open positions</div><div style="font-size:0.78rem;color:#444;margin-top:4px;">Trades will appear here once your system executes an order</div></div>`;
+            posContainer.innerHTML = `<div class="empty-positions"><div>No open positions</div><div style="font-size:0.78rem;color:#444;margin-top:4px;">Trades will appear here once your system executes an order</div></div>`;
           } else {
             const priceMap = {};
             await Promise.all(openTrades.map(async t => {
               try {
-                const r = await fetch(`${SUPABASE_URL}/functions/v1/get-price?symbol=${encodeURIComponent(t.symbol)}`, { headers: { 'apikey': SUPABASE_ANON_KEY } });
+                const normalizedSymbol = normalizeSymbol(t.symbol);
+                const r = await fetch(`${SUPABASE_URL}/functions/v1/get-price?symbol=${encodeURIComponent(normalizedSymbol)}`, { headers: { 'apikey': SUPABASE_ANON_KEY } });
                 const j = await r.json();
                 if (j.price) priceMap[t.symbol] = j.price;
               } catch {}
@@ -740,11 +733,6 @@
       await refreshStats();
       setInterval(refreshStats, 30000);
       document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshStats(); });
-
-      document.getElementById('signout-btn').addEventListener('click', async () => {
-        await sbClient.auth.signOut();
-        window.location.href = 'index.html';
-      });
 
       // Contact footer
       const footer = document.createElement('div');
