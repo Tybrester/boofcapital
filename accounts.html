@@ -157,14 +157,15 @@
         }
       }
 
-      const paperEnabled = localStorage.getItem('paper_trading_enabled') === 'true';
+      // Check paper trading in localStorage OR Supabase
+      const paperInLocalStorage = localStorage.getItem('paper_trading_enabled') === 'true';
+      const { data: paperAcct } = await sbClient.from('paper_accounts').select('balance').eq('user_id', user.id).maybeSingle();
+      const paperEnabled = paperInLocalStorage || !!paperAcct;
+      const paperBalance = paperAcct?.balance ?? 100000;
+      
       const section = document.getElementById('connected-accounts-section');
 
       let html = '<div class="section-title">Connected Accounts</div>';
-
-      // Fetch paper balance from Supabase (syncs with dashboard)
-      const { data: paperAcct } = await sbClient.from('paper_accounts').select('balance').eq('user_id', user.id).maybeSingle();
-      const paperBalance = paperAcct?.balance ?? 100000;
       
       // Check for tastytrade in both localStorage AND Supabase
       const tastyInLocalStorage = localStorage.getItem('webhook_tastytrade');
