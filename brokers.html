@@ -366,7 +366,11 @@
         try {
           const res = await fetch(`${SUPABASE_URL}/functions/v1/tasty-auth`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
+            headers: { 
+              'Content-Type': 'application/json', 
+              'apikey': SUPABASE_ANON_KEY,
+              'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+            },
             body: JSON.stringify({ username, password, mfa_code: code, user_id: currentUser.id })
           });
           const json = await res.json();
@@ -394,7 +398,11 @@
       try {
         const res = await fetch(`${SUPABASE_URL}/functions/v1/tasty-auth`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
+          headers: { 
+            'Content-Type': 'application/json', 
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+          },
           body: JSON.stringify({ username, password, user_id: currentUser.id })
         });
         const json = await res.json();
