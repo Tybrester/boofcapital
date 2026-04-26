@@ -340,9 +340,6 @@
 
         const autoStatus = isRunning ? 'Auto-trading · checks every hour' : 'Auto mode — bot stopped';
         const paperBalance = Number(s.paper_balance ?? 50000);
-        const paperStart = Number(s.paper_balance_start ?? 50000);
-        const paperPnl = paperBalance - paperStart;
-        const paperPnlStr = (paperPnl >= 0 ? '+' : '') + '$' + Math.abs(paperPnl).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
         const card = document.createElement('div');
         card.className = 'bot-card' + (isRunning ? ' running' : ' stopped');
@@ -368,7 +365,6 @@
             <div>
               <div class="paper-balance-label">Paper Balance</div>
               <div class="paper-balance-value" id="paper-bal-${s.id}">$${paperBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-              <div class="paper-balance-pnl" style="color:${paperPnl >= 0 ? 'var(--accent)' : 'var(--red)'}" id="paper-pnl-${s.id}">${paperPnlStr} all time</div>
             </div>
             <button class="reset-btn" onclick="resetPaperBalance('${s.id}')">Reset to $50k</button>
           </div>` : ''}
@@ -557,9 +553,7 @@
       if (!confirm('Reset paper balance back to $50,000?')) return;
       await sbClient.from('systems').update({ paper_balance: 50000, paper_balance_start: 50000 }).eq('id', systemId);
       const balEl = document.getElementById('paper-bal-' + systemId);
-      const pnlEl = document.getElementById('paper-pnl-' + systemId);
       if (balEl) balEl.textContent = '$50,000.00';
-      if (pnlEl) { pnlEl.textContent = '+$0.00 all time'; pnlEl.style.color = 'var(--accent)'; }
     }
 
     async function toggleBot(systemId, on) {
