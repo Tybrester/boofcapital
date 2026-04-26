@@ -317,7 +317,7 @@ Deno.serve(async (req) => {
               const { data: recent } = await supabase.from('options_trades').select('signal').eq('bot_id', bot.id).eq('symbol', sym).gte('created_at', fourHoursAgo).limit(1);
               if (recent && recent.length > 0 && recent[0].signal === signal) { results.push({ bot_id: bot.id, symbol: sym, status: 'skipped', reason: `Duplicate ${signal} within 4h` }); return; }
 
-              // Close open opposite positions
+              // Close open opposite positions and return balance
               const { data: openTrades } = await supabase.from('options_trades').select('*').eq('bot_id', bot.id).eq('symbol', sym).eq('status', 'open');
               const sigma = calcHistoricalVolatility(candles.map(c => c.close));
               if (openTrades && openTrades.length > 0) {
@@ -328,6 +328,10 @@ Deno.serve(async (req) => {
                   const exitPremium = blackScholes(price, open.strike, T, R, sigma, optType);
                   const pnl = (exitPremium - open.premium_per_contract) * open.contracts * 100;
                   await supabase.from('options_trades').update({ status: 'closed', exit_price: exitPremium, pnl, closed_at: new Date().toISOString() }).eq('id', open.id);
+                  // Return original cost + profit/loss back to balance
+                  const { data: bRow } = await supabase.from('options_bots').select('paper_balance').eq('id', bot.id).single();
+                  const bBal = Number(bRow?.paper_balance ?? 150000);
+                  await supabase.from('options_bots').update({ paper_balance: bBal + Number(open.total_cost) + pnl }).eq('id', bot.id);
                 }
               }
 
