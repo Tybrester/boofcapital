@@ -407,10 +407,28 @@ Deno.serve(async (req) => {
       'ZM','ROKU','TWLO','U','PATH','AI','GTLB','MDB','CFLT','BILL',
       'ARM','SMCI','ANET','ONTO','AMBA','ALGN','PODD','AXNX','TMDX','CELH',
     ];
+    // Crypto: all with consistent daily volume > $100M
     const SCAN_CRYPTO = [
-      'BTC-USD','ETH-USD','SOL-USD','BNB-USD','XRP-USD','ADA-USD','AVAX-USD',
-      'DOGE-USD','DOT-USD','MATIC-USD','LINK-USD','UNI-USD','LTC-USD',
-      'ATOM-USD','ICP-USD','FIL-USD','APT-USD','ARB-USD','OP-USD','INJ-USD',
+      'BTC-USD',   // ~$30B+ daily
+      'ETH-USD',   // ~$15B+ daily
+      'SOL-USD',   // ~$3B+ daily
+      'XRP-USD',   // ~$2B+ daily
+      'BNB-USD',   // ~$1B+ daily
+      'DOGE-USD',  // ~$1B+ daily
+      'ADA-USD',   // ~$500M+ daily
+      'AVAX-USD',  // ~$500M+ daily
+      'LINK-USD',  // ~$500M+ daily
+      'MATIC-USD', // ~$400M+ daily
+      'LTC-USD',   // ~$400M+ daily
+      'UNI-USD',   // ~$200M+ daily
+      'SHIB-USD',  // ~$300M+ daily
+      'TON-USD',   // ~$300M+ daily
+      'DOT-USD',   // ~$200M+ daily
+      'TRX-USD',   // ~$500M+ daily
+      'NEAR-USD',  // ~$200M+ daily
+      'APT-USD',   // ~$200M+ daily
+      'ARB-USD',   // ~$150M+ daily
+      'SUI-USD',   // ~$500M+ daily
     ];
     const SCAN_ALL = [...SCAN_STOCKS, ...SCAN_CRYPTO];
 
