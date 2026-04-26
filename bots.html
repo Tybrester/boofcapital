@@ -390,8 +390,6 @@
                 <select class="auto-input wide" id="oscan-${b.id}" onchange="toggleOptScanMode('${b.id}', this.value)">
                   <option value="single" ${!b.bot_scan_mode||b.bot_scan_mode==='single'?'selected':''}>Single Symbol</option>
                   <option value="scan_stocks" ${b.bot_scan_mode==='scan_stocks'?'selected':''}>Top Stocks</option>
-                  <option value="scan_crypto" ${b.bot_scan_mode==='scan_crypto'?'selected':''}>Top Crypto</option>
-                  <option value="scan_all" ${b.bot_scan_mode==='scan_all'?'selected':''}>All Markets</option>
                 </select>
               </div>
               <div id="osym-row-${b.id}" style="${b.bot_scan_mode&&b.bot_scan_mode!=='single'?'display:none':''}"><div class="auto-settings-row"><span>Symbol</span><input class="auto-input" id="osym-${b.id}" value="${b.bot_symbol||'SPY'}" placeholder="SPY"/></div></div>

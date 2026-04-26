@@ -248,13 +248,6 @@ Deno.serve(async (req) => {
       'SNAP','UBER','LYFT','SPOT','ZM','DOCU','PINS','ROKU','SHOP',
       'CVS','TMO','MDT','ISRG','F','GM',
     ];
-    const SCAN_CRYPTO = [
-      'BTC-USD','ETH-USD','SOL-USD','XRP-USD','BNB-USD','DOGE-USD','ADA-USD',
-      'AVAX-USD','LINK-USD','MATIC-USD','LTC-USD','UNI-USD','SHIB-USD','TON-USD',
-      'DOT-USD','TRX-USD','NEAR-USD','APT-USD','ARB-USD','SUI-USD',
-    ];
-    const SCAN_ALL = [...SCAN_STOCKS, ...SCAN_CRYPTO];
-
     for (const bot of bots) {
       const settings: BotSettings = {
         atrLength:      bot.bot_atr_length     ?? 10,
@@ -273,7 +266,7 @@ Deno.serve(async (req) => {
       };
 
       const scanMode: string = (bot.bot_scan_mode as string) || 'single';
-      const symbolList = scanMode === 'scan_stocks' ? SCAN_STOCKS : scanMode === 'scan_crypto' ? SCAN_CRYPTO : scanMode === 'scan_all' ? SCAN_ALL : [settings.symbol];
+      const symbolList = scanMode === 'scan_stocks' ? SCAN_STOCKS : [settings.symbol];
 
       try {
         for (let i = 0; i < symbolList.length; i += 10) {
