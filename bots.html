@@ -339,7 +339,7 @@
         const isScan = scanMode !== 'single';
 
         const autoStatus = isRunning ? 'Auto-trading · checks every hour' : 'Auto mode — bot stopped';
-        const paperBalance = Number(s.paper_balance ?? 50000);
+        const paperBalance = Number(s.paper_balance ?? 150000);
 
         const card = document.createElement('div');
         card.className = 'bot-card' + (isRunning ? ' running' : ' stopped');
@@ -550,10 +550,10 @@
 
 
     async function resetPaperBalance(systemId) {
-      if (!confirm('Reset paper balance back to $50,000?')) return;
-      await sbClient.from('systems').update({ paper_balance: 50000, paper_balance_start: 50000 }).eq('id', systemId);
+      if (!confirm('Reset paper balance back to $150,000?')) return;
+      await sbClient.from('systems').update({ paper_balance: 150000, paper_balance_start: 150000 }).eq('id', systemId);
       const balEl = document.getElementById('paper-bal-' + systemId);
-      if (balEl) balEl.textContent = '$50,000.00';
+      if (balEl) balEl.textContent = '$150,000.00';
     }
 
     async function toggleBot(systemId, on) {
