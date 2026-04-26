@@ -196,6 +196,13 @@
 
     .indicator-badge { display: inline-flex; align-items: center; gap: 5px; background: rgba(130,177,255,0.08); border: 1px solid rgba(130,177,255,0.15); color: #82b1ff; font-size: 0.72rem; font-weight: 600; padding: 3px 10px; border-radius: 20px; }
 
+    .paper-balance-box { background: #0a0a0a; border: 1px solid #1e1e1e; border-radius: 10px; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; }
+    .paper-balance-label { font-size: 0.68rem; font-weight: 700; color: #555; text-transform: uppercase; letter-spacing: 0.08em; }
+    .paper-balance-value { font-size: 1.3rem; font-weight: 900; color: var(--accent); letter-spacing: -0.02em; }
+    .paper-balance-pnl { font-size: 0.75rem; font-weight: 700; margin-top: 2px; }
+    .reset-btn { background: none; border: 1px solid #2a2a2a; color: #555; font-size: 0.7rem; font-weight: 700; padding: 4px 10px; border-radius: 6px; cursor: pointer; font-family: inherit; transition: all 0.15s; }
+    .reset-btn:hover { border-color: #ff7043; color: #ff7043; }
+
     .settings-lock-wrap { position: relative; }
     .settings-lock-overlay { position: absolute; inset: 0; background: rgba(10,10,10,0.75); border-radius: 10px; z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; backdrop-filter: blur(2px); }
     .settings-lock-overlay.hidden { display: none; }
@@ -332,6 +339,10 @@
         const isScan = scanMode !== 'single';
 
         const autoStatus = isRunning ? 'Auto-trading · checks every hour' : 'Auto mode — bot stopped';
+        const paperBalance = Number(s.paper_balance ?? 50000);
+        const paperStart = Number(s.paper_balance_start ?? 50000);
+        const paperPnl = paperBalance - paperStart;
+        const paperPnlStr = (paperPnl >= 0 ? '+' : '') + '$' + Math.abs(paperPnl).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
         const card = document.createElement('div');
         card.className = 'bot-card' + (isRunning ? ' running' : ' stopped');
@@ -350,6 +361,17 @@
               </div>
             </div>
           </div>
+
+          ${!brokerIsTasty ? `
+          <!-- Paper balance -->
+          <div class="paper-balance-box">
+            <div>
+              <div class="paper-balance-label">Paper Balance</div>
+              <div class="paper-balance-value" id="paper-bal-${s.id}">$${paperBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+              <div class="paper-balance-pnl" style="color:${paperPnl >= 0 ? 'var(--accent)' : 'var(--red)'}" id="paper-pnl-${s.id}">${paperPnlStr} all time</div>
+            </div>
+            <button class="reset-btn" onclick="resetPaperBalance('${s.id}')">Reset to $50k</button>
+          </div>` : ''}
 
           <!-- Master on/off toggle -->
           <div style="background:#0f0f0f;border-radius:10px;padding:14px 16px;">
@@ -530,6 +552,15 @@
       }
     }
 
+
+    async function resetPaperBalance(systemId) {
+      if (!confirm('Reset paper balance back to $50,000?')) return;
+      await sbClient.from('systems').update({ paper_balance: 50000, paper_balance_start: 50000 }).eq('id', systemId);
+      const balEl = document.getElementById('paper-bal-' + systemId);
+      const pnlEl = document.getElementById('paper-pnl-' + systemId);
+      if (balEl) balEl.textContent = '$50,000.00';
+      if (pnlEl) { pnlEl.textContent = '+$0.00 all time'; pnlEl.style.color = 'var(--accent)'; }
+    }
 
     async function toggleBot(systemId, on) {
       await sbClient.from('systems').update({ enabled: on, auto_submit: on }).eq('id', systemId);

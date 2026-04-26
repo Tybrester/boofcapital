@@ -425,6 +425,15 @@ Deno.serve(async (req) => {
             tradeStatus = 'failed';
             console.error('[AutoBot] Tastytrade error:', brokerError);
           }
+        } else {
+          // Paper trading: update virtual balance
+          const tradeValue = quantity * price;
+          const { data: sysRow } = await supabase.from('systems').select('paper_balance').eq('id', system.id as string).single();
+          const currentBalance = Number(sysRow?.paper_balance ?? 50000);
+          const newBalance = signal === 'buy'
+            ? currentBalance - tradeValue
+            : currentBalance + tradeValue;
+          await supabase.from('systems').update({ paper_balance: Math.max(0, newBalance) }).eq('id', system.id as string);
         }
 
         const { data: trade } = await supabase.from('trades').insert({
