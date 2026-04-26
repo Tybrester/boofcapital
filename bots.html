@@ -243,7 +243,7 @@
           </button>
           <div class="user-dropdown-menu">
             <button class="user-dropdown-item red" onclick="signOut()">
-              <span>🚪</span> Sign Out
+              Sign Out
             </button>
           </div>
         </div>
@@ -277,7 +277,7 @@
           <!-- Options Bots Section -->
           <div class="section-divider">
             <div class="section-divider-line"></div>
-            <div class="section-divider-label">⚡ Options Bots (Paper)</div>
+            <div class="section-divider-label">Options Bots (Paper)</div>
             <div class="section-divider-line"></div>
           </div>
           <div style="display:flex;justify-content:flex-end;margin-bottom:16px;">
@@ -293,7 +293,7 @@
           <!-- Stock Bot Activity -->
           <div id="panel-stocks">
             <div class="trades-panel-header">
-              <div class="trades-panel-title">📈 Stock Bot Activity</div>
+              <div class="trades-panel-title">Stock Bot Activity</div>
               <div class="pnl-stats-grid" id="pnl-stats">
                 <div class="pnl-stat"><div class="pnl-stat-label">Total P&L</div><div class="pnl-stat-value neu" id="stat-pnl">—</div></div>
                 <div class="pnl-stat"><div class="pnl-stat-label">Win Rate</div><div class="pnl-stat-value neu" id="stat-wr">—</div></div>
@@ -312,7 +312,7 @@
           <!-- Options Bot Activity -->
           <div id="panel-options">
             <div class="trades-panel-header">
-              <div class="trades-panel-title" style="color:#ffc107;">⚡ Options Bot Activity</div>
+              <div class="trades-panel-title" style="color:#ffc107;">Options Bot Activity</div>
               <div class="pnl-stats-grid" id="opt-pnl-stats">
                 <div class="pnl-stat"><div class="pnl-stat-label">Total P&L</div><div class="pnl-stat-value neu" id="opt-stat-pnl">—</div></div>
                 <div class="pnl-stat"><div class="pnl-stat-label">Win Rate</div><div class="pnl-stat-value neu" id="opt-stat-wr">—</div></div>
@@ -350,7 +350,7 @@
       const container = document.getElementById('options-bots-container');
       const { data: bots } = await sbClient.from('options_bots').select('*').eq('user_id', currentUserId).order('created_at', { ascending: false });
       if (!bots || bots.length === 0) {
-        container.innerHTML = `<div class="empty-state" style="border-color:#2a2000;"><div style="font-size:2rem;margin-bottom:12px;">⚡</div><div>No options bots yet.</div><div style="margin-top:8px;font-size:0.82rem;">Click "+ New Options Bot" to create one.</div></div>`;
+        container.innerHTML = `<div class="empty-state" style="border-color:#2a2000;"><div>No options bots yet.</div><div style="margin-top:8px;font-size:0.82rem;">Click "+ New Options Bot" to create one.</div></div>`;
         return;
       }
       container.innerHTML = '';
@@ -376,7 +376,7 @@
               </div>
               <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center;">
                 <span class="bot-broker-tag bot-broker-paper">Paper</span>
-                <span class="option-badge">⚡ Options</span>
+                <span class="option-badge">Options</span>
                 <span style="font-size:0.72rem;color:#555;">${expiryLabel} · ${otmLabel}</span>
               </div>
             </div>
@@ -468,7 +468,6 @@
               <div class="run-result" id="opt-run-result-${b.id}"></div>
             </div>
             <div class="settings-lock-overlay ${isRunning ? '' : 'hidden'}" id="opt-settings-lock-${b.id}">
-              <div class="settings-lock-icon">🔒</div>
               <div class="settings-lock-msg">Bot is running.<br/><span>Stop bot to edit settings.</span></div>
             </div>
           </div>
@@ -566,7 +565,6 @@
 
       if (error || !systems || systems.length === 0) {
         container.innerHTML = `<div class="empty-state">
-          <div style="font-size:2rem;margin-bottom:12px;">🤖</div>
           <div>No bots yet.</div>
           <div style="margin-top:8px;font-size:0.82rem;">Create a System first, then connect it to a TradingView alert.</div>
           <button class="btn-primary" style="margin-top:16px;" onclick="window.location.href='alerts.html'">Create a System</button>
@@ -608,7 +606,7 @@
               </div>
               <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center;">
                 <span class="bot-broker-tag ${brokerClass}" id="broker-tag-${s.id}">${brokerLabel}</span>
-                <span class="indicator-badge">🤖 Auto</span>
+                <span class="indicator-badge">Auto</span>
                 <span style="font-size:0.72rem;color:#555;" id="status-detail-${s.id}">${autoStatus}</span>
               </div>
             </div>
@@ -643,7 +641,6 @@
             <div class="section-label">Auto Bot Settings</div>
             <div class="settings-lock-wrap">
             <div id="settings-lock-${s.id}" class="settings-lock-overlay ${isRunning ? '' : 'hidden'}">
-              <div class="settings-lock-icon">🔒</div>
               <div class="settings-lock-msg">Turn off the bot to<br/><span>edit settings</span></div>
             </div>
             <div class="auto-settings">
@@ -699,7 +696,7 @@
                 </select>
               </div>
               <div id="broker-warn-${s.id}" style="font-size:0.72rem;color:#ff7043;display:${brokerIsTasty?'flex':'none'};align-items:center;gap:6px;background:rgba(255,112,67,0.08);border:1px solid rgba(255,112,67,0.2);border-radius:6px;padding:8px 10px;">
-                ⚠️ <span>Live trading enabled — real orders will be placed on Tastytrade</span>
+                <span>Live trading enabled — real orders will be placed on Tastytrade</span>
               </div>
               <div style="display:flex;gap:8px;align-items:center;">
                 <button class="save-btn" onclick="saveAutoSettings('${s.id}')">Save Settings</button>
