@@ -227,38 +227,6 @@
           <div class="empty-state">Loading bots...</div>
         </div>
 
-        <!-- Pine Script Guide -->
-        <div style="margin-top:40px;">
-          <div class="section-label">TradingView Setup Guide</div>
-          <div class="pine-section">
-            <h3>Step 1 — Add this to your Pine Script strategy</h3>
-            <div class="pine-code" id="pine-snippet"><span class="cmt">// Add these lines to your Pine Script strategy</span>
-<span class="cmt">// Replace "buy_signal" and "sell_signal" with your actual conditions</span>
-
-<span class="fn">alert</span>(<span class="fn">str.format</span>(<span class="str">'&#123;"action":"buy","symbol":"&#123;0&#125;","price":&#123;1&#125;,"quantity":1,"order_type":"market","broker":"tastytrade"&#125;'</span>,
-  syminfo.ticker, close), alert.freq_once_per_bar_close)
-
-<span class="fn">alert</span>(<span class="fn">str.format</span>(<span class="str">'&#123;"action":"sell","symbol":"&#123;0&#125;","price":&#123;1&#125;,"quantity":1,"order_type":"market","broker":"tastytrade"&#125;'</span>,
-  syminfo.ticker, close), alert.freq_once_per_bar_close)
-
-<span class="cmt">// OR use alertcondition() for strategy.entry signals:</span>
-<span class="kw">alertcondition</span>(strategy.position_size > 0, <span class="str">"Buy Signal"</span>, <span class="str">'&#123;"action":"buy","symbol":"{{ticker}}","price":{{close}},"quantity":1,"broker":"tastytrade"&#125;'</span>)
-<span class="kw">alertcondition</span>(strategy.position_size < 0, <span class="str">"Sell Signal"</span>, <span class="str">'&#123;"action":"sell","symbol":"{{ticker}}","price":{{close}},"quantity":1,"broker":"tastytrade"&#125;'</span>)</div>
-            <button class="copy-btn" style="margin-top:12px;padding:7px 16px;" onclick="copyPine()">Copy Code</button>
-          </div>
-
-          <div class="pine-section" style="margin-top:12px;">
-            <h3>Step 2 — Create a TradingView Alert</h3>
-            <div style="color:var(--muted);font-size:0.84rem;line-height:1.8;">
-              1. On your chart, right-click → <strong style="color:var(--text);">Add Alert</strong><br>
-              2. Set condition to your Pine Script signal<br>
-              3. Under <strong style="color:var(--text);">Notifications</strong>, enable <strong style="color:var(--text);">Webhook URL</strong><br>
-              4. Paste your bot's Webhook URL (shown on each bot card above)<br>
-              5. Set the <strong style="color:var(--text);">Message</strong> to the JSON payload from Step 1<br>
-              6. Enable the bot using the toggle above — done!
-            </div>
-          </div>
-        </div>
 
         <div style="text-align:center;padding:24px;font-size:0.85rem;color:#666;margin-top:auto;">
           Contact: <a href="mailto:BoofCapital@gmail.com" style="color:var(--muted);text-decoration:none;">BoofCapital@gmail.com</a>
@@ -309,8 +277,6 @@
 
       systems.forEach(s => {
         const isRunning = s.enabled && s.auto_submit;
-        const isAuto = (s.bot_mode === 'auto');
-        const webhookUrl = buildWebhookUrl(currentUserId, s.id);
         const brokerLabel = s.broker === 'tastytrade' ? 'Tastytrade' : 'Paper';
         const brokerClass = s.broker === 'tastytrade' ? 'bot-broker-tastytrade' : 'bot-broker-paper';
 
@@ -323,9 +289,7 @@
         const scanMode = s.bot_scan_mode || 'single';
         const isScan = scanMode !== 'single';
 
-        const autoStatus = isAuto
-          ? (isRunning ? 'Auto-trading on 1h candles' : 'Auto mode — bot stopped')
-          : 'Webhook mode — awaiting TradingView alert';
+        const autoStatus = isRunning ? 'Auto-trading · checks every hour' : 'Auto mode — bot stopped';
 
         const card = document.createElement('div');
         card.className = 'bot-card' + (isRunning ? ' running' : ' stopped');
@@ -339,18 +303,9 @@
               </div>
               <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center;">
                 <span class="bot-broker-tag ${brokerClass}" id="broker-tag-${s.id}">${brokerLabel}</span>
-                ${isAuto ? `<span class="indicator-badge">🤖 Auto</span>` : `<span style="font-size:0.7rem;font-weight:700;color:#888;padding:3px 10px;border-radius:20px;background:#1a1a1a;">Webhook</span>`}
+                <span class="indicator-badge">🤖 Auto</span>
                 <span style="font-size:0.72rem;color:#555;" id="status-detail-${s.id}">${autoStatus}</span>
               </div>
-            </div>
-          </div>
-
-          <!-- Bot mode tabs -->
-          <div>
-            <div class="section-label" style="margin-bottom:8px;">Bot Mode</div>
-            <div class="mode-tabs">
-              <button class="mode-tab ${!isAuto ? 'active' : ''}" onclick="setBotMode('${s.id}', 'webhook', this)">Webhook (TradingView)</button>
-              <button class="mode-tab ${isAuto ? 'active' : ''}" onclick="setBotMode('${s.id}', 'auto', this)">Auto (Independent)</button>
             </div>
           </div>
 
@@ -368,8 +323,8 @@
             </div>
           </div>
 
-          <!-- AUTO BOT SETTINGS (shown when auto mode) -->
-          <div id="auto-settings-${s.id}" style="display:${isAuto ? 'block' : 'none'}">
+          <!-- AUTO BOT SETTINGS -->
+          <div id="auto-settings-${s.id}">
             <div class="section-label">Auto Bot Settings</div>
             <div class="settings-lock-wrap">
             <div id="settings-lock-${s.id}" class="settings-lock-overlay ${isRunning ? '' : 'hidden'}">
@@ -461,45 +416,14 @@
           </div>
 
 
-          <!-- Webhook mode settings -->
-          <div id="webhook-section-${s.id}" style="display:${isAuto ? 'none' : 'block'}">
-            <div class="section-label">Broker</div>
-            <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
-              <select class="auto-input" id="brk-wh-${s.id}" style="width:100%;max-width:220px;" onchange="saveBrokerOnly('${s.id}', this.value)">
-                <option value="paper" ${!brokerIsTasty?'selected':''}>Paper Trading</option>
-                <option value="tastytrade" ${brokerIsTasty?'selected':''}>Tastytrade (Live)</option>
-              </select>
-            </div>
-            <div id="broker-warn-wh-${s.id}" style="font-size:0.72rem;color:#ff7043;display:${brokerIsTasty?'flex':'none'};align-items:center;gap:6px;background:rgba(255,112,67,0.08);border:1px solid rgba(255,112,67,0.2);border-radius:6px;padding:8px 10px;margin-bottom:12px;">
-              ⚠️ <span>Live trading enabled — real orders will be placed on Tastytrade</span>
-            </div>
-            <div class="section-label">Webhook URL</div>
-            <div class="webhook-box">
-              <div class="webhook-url">${webhookUrl}</div>
-              <button class="copy-btn" onclick="copyWebhook('${s.id}', this)">Copy</button>
-            </div>
-          </div>
         `;
 
-        card.dataset.webhookUrl = webhookUrl;
         grid.appendChild(card);
       });
 
       container.appendChild(grid);
     }
 
-    async function setBotMode(systemId, mode, clickedBtn) {
-      await sbClient.from('systems').update({ bot_mode: mode }).eq('id', systemId);
-      const card = document.getElementById('botcard-' + systemId);
-      card.querySelectorAll('.mode-tab').forEach(b => b.classList.remove('active'));
-      clickedBtn.classList.add('active');
-      const autoPanel = document.getElementById('auto-settings-' + systemId);
-      const webhookPanel = document.getElementById('webhook-section-' + systemId);
-      if (autoPanel) autoPanel.style.display = mode === 'auto' ? 'block' : 'none';
-      if (webhookPanel) webhookPanel.style.display = mode === 'auto' ? 'none' : 'block';
-      const isRunning = document.getElementById('master-' + systemId)?.checked;
-      refreshStatusBadge(systemId, isRunning, mode);
-    }
 
     async function saveAutoSettings(systemId) {
       const symbol = document.getElementById('sym-' + systemId)?.value.trim().toUpperCase();
@@ -522,23 +446,9 @@
       if (resultEl) { resultEl.textContent = '✓ Settings saved'; resultEl.className = 'run-result green'; setTimeout(() => { resultEl.textContent = ''; resultEl.className = 'run-result'; }, 2000); }
     }
 
-    async function saveBrokerOnly(systemId, broker) {
-      await sbClient.from('systems').update({ broker }).eq('id', systemId);
-      refreshBrokerTag(systemId, broker);
-      // Sync auto-mode broker select if it exists
-      const autoSel = document.getElementById('brk-' + systemId);
-      if (autoSel) autoSel.value = broker;
-      // Show/hide warning
-      const warn = document.getElementById('broker-warn-wh-' + systemId);
-      if (warn) warn.style.display = broker === 'tastytrade' ? 'flex' : 'none';
-    }
 
     function updateBrokerTag(systemId, broker) {
       refreshBrokerTag(systemId, broker);
-      // Sync webhook-mode broker select if it exists
-      const whSel = document.getElementById('brk-wh-' + systemId);
-      if (whSel) whSel.value = broker;
-      // Show/hide warning
       const warn = document.getElementById('broker-warn-' + systemId);
       if (warn) warn.style.display = broker === 'tastytrade' ? 'flex' : 'none';
     }
@@ -579,10 +489,7 @@
         badge.className = 'status-badge ' + (isRunning ? 'running' : 'stopped');
         badge.textContent = isRunning ? 'Running' : 'Stopped';
       }
-      if (detail) {
-        if (mode === 'auto') detail.textContent = isRunning ? 'Auto-trading · checks every hour' : 'Auto mode — bot stopped';
-        else detail.textContent = isRunning ? 'Listening for webhook signals' : 'Stopped — signals ignored';
-      }
+      if (detail) detail.textContent = isRunning ? 'Auto-trading · checks every hour' : 'Auto mode — bot stopped';
       if (card) { card.classList.toggle('running', isRunning); card.classList.toggle('stopped', !isRunning); }
       const lock = document.getElementById('settings-lock-' + systemId);
       if (lock) lock.classList.toggle('hidden', !isRunning);
@@ -600,41 +507,6 @@
       }
     }
 
-    async function runBotNow(systemId, btn) {
-      const resultEl = document.getElementById('run-result-' + systemId);
-      btn.disabled = true;
-      btn.textContent = 'Running...';
-      if (resultEl) { resultEl.textContent = 'Checking signal...'; resultEl.className = 'run-result'; }
-      try {
-        const { data: { session } } = await sbClient.auth.getSession();
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/auto-bot`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-          body: JSON.stringify({ system_id: systemId, user_id: currentUserId })
-        });
-        const json = await res.json();
-        const allResults = json.results || [];
-        if (!allResults.length) { if (resultEl) { resultEl.textContent = 'No result returned'; resultEl.className = 'run-result'; } return; }
-        // Summarize
-        const signals = allResults.filter((r) => r.signal && r.signal !== 'none' && (r.status === 'filled' || r.status === 'paper'));
-        const errors  = allResults.filter((r) => r.status === 'error');
-        if (signals.length > 0) {
-          const summary = signals.map((r) => `${r.signal?.toUpperCase()} ${r.symbol} @$${Number(r.price).toFixed(2)}`).join(' · ');
-          if (resultEl) { resultEl.textContent = `✓ ${signals.length} signal${signals.length>1?'s':''}: ${summary}`; resultEl.className = 'run-result green'; }
-          setTimeout(() => loadBots(), 1500);
-        } else if (errors.length > 0) {
-          if (resultEl) { resultEl.textContent = `Error: ${errors[0].error}`; resultEl.className = 'run-result red'; }
-        } else {
-          const scanned = allResults.length;
-          if (resultEl) { resultEl.textContent = `Scanned ${scanned} symbol${scanned>1?'s':''} — no signals this bar`; resultEl.className = 'run-result'; }
-        }
-      } catch(e) {
-        if (resultEl) { resultEl.textContent = 'Error: ' + e.message; resultEl.className = 'run-result red'; }
-      } finally {
-        btn.disabled = false;
-        btn.textContent = '▶ Run Now';
-      }
-    }
 
     async function toggleBot(systemId, on) {
       const enabled = on;
@@ -655,36 +527,6 @@
       const master = document.getElementById('master-' + systemId);
       if (master) master.checked = isRunning;
       refreshStatusBadge(systemId, isRunning);
-    }
-
-    function copyWebhook(systemId, btn) {
-      const card = document.getElementById('botcard-' + systemId);
-      const url = card?.dataset.webhookUrl;
-      if (!url) return;
-      navigator.clipboard.writeText(url).then(() => {
-        const orig = btn.textContent;
-        btn.textContent = 'Copied!';
-        btn.style.color = 'var(--accent)';
-        btn.style.borderColor = 'var(--accent)';
-        setTimeout(() => { btn.textContent = orig; btn.style.color = ''; btn.style.borderColor = ''; }, 1800);
-      });
-    }
-
-    function copyPine() {
-      const text = `// Add these lines to your Pine Script strategy (replace signals with your own)
-// Buy signal
-if (your_buy_condition)
-    alert(str.format('{"action":"buy","symbol":"{0}","price":{1},"quantity":1,"order_type":"market","broker":"tastytrade"}', syminfo.ticker, close), alert.freq_once_per_bar_close)
-
-// Sell signal  
-if (your_sell_condition)
-    alert(str.format('{"action":"sell","symbol":"{0}","price":{1},"quantity":1,"order_type":"market","broker":"tastytrade"}', syminfo.ticker, close), alert.freq_once_per_bar_close)`;
-      navigator.clipboard.writeText(text).then(() => {
-        const btn = document.querySelector('[onclick="copyPine()"]');
-        const orig = btn.textContent;
-        btn.textContent = 'Copied!';
-        setTimeout(() => btn.textContent = orig, 1800);
-      });
     }
 
     async function init() {
