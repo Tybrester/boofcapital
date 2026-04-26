@@ -439,25 +439,6 @@
             </div>
           </div>
 
-          <!-- Sub-toggles -->
-          <div class="bot-toggles">
-            <div class="bot-toggle-row">
-              <span>System Enabled</span>
-              <label class="toggle-switch">
-                <input type="checkbox" id="tog-en-${s.id}" ${s.enabled ? 'checked' : ''} onchange="onSubToggle('${s.id}')"/>
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-            <div class="bot-toggle-row">
-              <span>Auto Submit Orders</span>
-              <label class="toggle-switch">
-                <input type="checkbox" id="tog-as-${s.id}" ${s.auto_submit ? 'checked' : ''} onchange="onSubToggle('${s.id}')"/>
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-          </div>
-
-
         `;
 
         grid.appendChild(card);
@@ -551,25 +532,10 @@
 
 
     async function toggleBot(systemId, on) {
-      const enabled = on;
-      const autoSubmit = on;
-      await sbClient.from('systems').update({ enabled, auto_submit: autoSubmit }).eq('id', systemId);
-      const enToggle = document.getElementById('tog-en-' + systemId);
-      const asToggle = document.getElementById('tog-as-' + systemId);
-      if (enToggle) enToggle.checked = enabled;
-      if (asToggle) asToggle.checked = autoSubmit;
+      await sbClient.from('systems').update({ enabled: on, auto_submit: on }).eq('id', systemId);
       refreshStatusBadge(systemId, on);
     }
 
-    async function onSubToggle(systemId) {
-      const enabled = document.getElementById('tog-en-' + systemId)?.checked;
-      const autoSubmit = document.getElementById('tog-as-' + systemId)?.checked;
-      const isRunning = enabled && autoSubmit;
-      await sbClient.from('systems').update({ enabled, auto_submit: autoSubmit }).eq('id', systemId);
-      const master = document.getElementById('master-' + systemId);
-      if (master) master.checked = isRunning;
-      refreshStatusBadge(systemId, isRunning);
-    }
 
     async function init() {
       const { data: { session } } = await sbClient.auth.getSession();
