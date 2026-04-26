@@ -115,6 +115,26 @@
 
     .section-label { font-size: 0.72rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
 
+    .mode-tabs { display: flex; gap: 6px; }
+    .mode-tab { padding: 5px 14px; border-radius: 20px; border: 1px solid #2a2a2a; background: transparent; color: var(--muted); font-size: 0.76rem; font-weight: 700; cursor: pointer; font-family: inherit; transition: all 0.15s; }
+    .mode-tab.active { border-color: var(--accent); background: rgba(0,230,118,0.1); color: var(--accent); }
+
+    .auto-settings { background: #0d0d0d; border: 1px solid #1a1a1a; border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+    .auto-settings-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 0.82rem; color: var(--muted); }
+    .auto-input { background: #111; border: 1px solid #2a2a2a; color: var(--text); padding: 6px 10px; border-radius: 6px; font-family: inherit; font-size: 0.85rem; outline: none; width: 110px; text-align: right; transition: border-color 0.15s; }
+    .auto-input:focus { border-color: var(--accent); }
+    .auto-input.wide { width: 140px; }
+    .save-btn { background: var(--accent); color: #000; font-size: 0.78rem; font-weight: 800; padding: 6px 14px; border-radius: 6px; border: none; cursor: pointer; font-family: inherit; transition: background 0.15s; }
+    .save-btn:hover { background: var(--accent-dim); }
+    .run-btn { background: transparent; border: 1px solid var(--accent); color: var(--accent); font-size: 0.78rem; font-weight: 700; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-family: inherit; transition: all 0.15s; }
+    .run-btn:hover { background: rgba(0,230,118,0.1); }
+    .run-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .run-result { font-size: 0.76rem; color: var(--muted); min-height: 16px; margin-top: 4px; }
+    .run-result.green { color: var(--accent); }
+    .run-result.red { color: var(--red); }
+
+    .indicator-badge { display: inline-flex; align-items: center; gap: 5px; background: rgba(130,177,255,0.08); border: 1px solid rgba(130,177,255,0.15); color: #82b1ff; font-size: 0.72rem; font-weight: 600; padding: 3px 10px; border-radius: 20px; }
+
     @media (max-width: 900px) { .sidebar { display: none; } main { padding: 20px 16px; } }
   </style>
 </head>
@@ -261,6 +281,7 @@
 
       systems.forEach(s => {
         const isRunning = s.enabled && s.auto_submit;
+        const isAuto = (s.bot_mode === 'auto');
         const stats = statsMap[s.id] || { total: 0, filled: 0, lastSignal: null };
         const webhookUrl = buildWebhookUrl(currentUserId, s.id);
         const brokerLabel = s.broker === 'tastytrade' ? 'Tastytrade' : 'Paper';
@@ -269,6 +290,14 @@
           ? new Date(stats.lastSignal).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
           : 'Never';
 
+        const symbol = s.bot_symbol || 'SPY';
+        const dollarAmt = s.bot_dollar_amount || 500;
+        const interval = s.bot_interval || '1h';
+
+        const autoStatus = isAuto
+          ? (isRunning ? 'Auto-trading on 1h candles' : 'Auto mode — bot stopped')
+          : 'Webhook mode — awaiting TradingView alert';
+
         const card = document.createElement('div');
         card.className = 'bot-card' + (isRunning ? ' running' : ' stopped');
         card.id = 'botcard-' + s.id;
@@ -276,9 +305,21 @@
           <div class="bot-header">
             <div>
               <div class="bot-name">${s.name}</div>
-              <span class="bot-broker-tag ${brokerClass}">${brokerLabel}</span>
+              <div style="display:flex;gap:6px;margin-top:5px;flex-wrap:wrap;">
+                <span class="bot-broker-tag ${brokerClass}">${brokerLabel}</span>
+                ${isAuto ? `<span class="indicator-badge">🤖 Auto</span>` : `<span style="font-size:0.7rem;font-weight:700;color:#888;padding:3px 10px;border-radius:20px;background:#1a1a1a;">Webhook</span>`}
+              </div>
             </div>
-            <div class="status-dot ${isRunning ? 'on' : 'off'}" id="dot-${s.id}" title="${isRunning ? 'Bot running' : 'Bot stopped'}"></div>
+            <div class="status-dot ${isRunning ? 'on' : 'off'}" id="dot-${s.id}"></div>
+          </div>
+
+          <!-- Bot mode tabs -->
+          <div>
+            <div class="section-label" style="margin-bottom:8px;">Bot Mode</div>
+            <div class="mode-tabs">
+              <button class="mode-tab ${!isAuto ? 'active' : ''}" onclick="setBotMode('${s.id}', 'webhook', this)">Webhook (TradingView)</button>
+              <button class="mode-tab ${isAuto ? 'active' : ''}" onclick="setBotMode('${s.id}', 'auto', this)">Auto (Independent)</button>
+            </div>
           </div>
 
           <!-- Master on/off toggle -->
@@ -286,12 +327,47 @@
             <div class="big-toggle-wrap">
               <div>
                 <div class="big-toggle-label">Bot Active</div>
-                <div class="big-toggle-sub" id="status-text-${s.id}">${isRunning ? 'Running — accepting signals' : 'Stopped — signals ignored'}</div>
+                <div class="big-toggle-sub" id="status-text-${s.id}">${autoStatus}</div>
               </div>
               <label class="big-toggle-switch">
                 <input type="checkbox" id="master-${s.id}" ${isRunning ? 'checked' : ''} onchange="toggleBot('${s.id}', this.checked)"/>
                 <span class="big-toggle-slider"></span>
               </label>
+            </div>
+          </div>
+
+          <!-- AUTO BOT SETTINGS (shown when auto mode) -->
+          <div id="auto-settings-${s.id}" style="display:${isAuto ? 'block' : 'none'}">
+            <div class="section-label">Auto Bot Settings</div>
+            <div class="auto-settings">
+              <div class="auto-settings-row">
+                <span>Symbol</span>
+                <input class="auto-input wide" id="sym-${s.id}" type="text" value="${symbol}" placeholder="e.g. SPY" />
+              </div>
+              <div class="auto-settings-row">
+                <span>$ Amount per Trade</span>
+                <input class="auto-input" id="amt-${s.id}" type="number" value="${dollarAmt}" min="1" />
+              </div>
+              <div class="auto-settings-row">
+                <span>Candle Interval</span>
+                <select class="auto-input" id="int-${s.id}" style="width:110px;">
+                  <option value="1m" ${interval==='1m'?'selected':''}>1 min</option>
+                  <option value="5m" ${interval==='5m'?'selected':''}>5 min</option>
+                  <option value="15m" ${interval==='15m'?'selected':''}>15 min</option>
+                  <option value="30m" ${interval==='30m'?'selected':''}>30 min</option>
+                  <option value="1h" ${interval==='1h'?'selected':''}>1 hour</option>
+                  <option value="4h" ${interval==='4h'?'selected':''}>4 hour</option>
+                  <option value="1d" ${interval==='1d'?'selected':''}>1 day</option>
+                </select>
+              </div>
+              <div style="display:flex;gap:8px;align-items:center;">
+                <button class="save-btn" onclick="saveAutoSettings('${s.id}')">Save Settings</button>
+                <button class="run-btn" id="runbtn-${s.id}" onclick="runBotNow('${s.id}', this)">▶ Run Now</button>
+              </div>
+              <div class="run-result" id="run-result-${s.id}"></div>
+              <div style="font-size:0.72rem;color:#555;border-top:1px solid #1a1a1a;padding-top:10px;">
+                Indicator: <strong style="color:#82b1ff;">Adaptive SuperTrend + EMA50 + ADX(14)</strong> · Signals on candle close
+              </div>
             </div>
           </div>
 
@@ -329,8 +405,8 @@
             </div>
           </div>
 
-          <!-- Webhook URL -->
-          <div>
+          <!-- Webhook URL (shown in webhook mode) -->
+          <div id="webhook-section-${s.id}" style="display:${isAuto ? 'none' : 'block'}">
             <div class="section-label">Webhook URL</div>
             <div class="webhook-box">
               <div class="webhook-url">${webhookUrl}</div>
@@ -339,13 +415,79 @@
           </div>
         `;
 
-        // Store webhook url for copy
         card.dataset.webhookUrl = webhookUrl;
         grid.appendChild(card);
       });
 
       container.innerHTML = '';
       container.appendChild(grid);
+    }
+
+    async function setBotMode(systemId, mode, clickedBtn) {
+      await sbClient.from('systems').update({ bot_mode: mode }).eq('id', systemId);
+      // Update tabs
+      const card = document.getElementById('botcard-' + systemId);
+      card.querySelectorAll('.mode-tab').forEach(b => b.classList.remove('active'));
+      clickedBtn.classList.add('active');
+      // Show/hide panels
+      const autoPanel = document.getElementById('auto-settings-' + systemId);
+      const webhookPanel = document.getElementById('webhook-section-' + systemId);
+      const statusText = document.getElementById('status-text-' + systemId);
+      const isRunning = document.getElementById('master-' + systemId)?.checked;
+      if (autoPanel) autoPanel.style.display = mode === 'auto' ? 'block' : 'none';
+      if (webhookPanel) webhookPanel.style.display = mode === 'auto' ? 'none' : 'block';
+      if (statusText) {
+        if (mode === 'auto') statusText.textContent = isRunning ? 'Auto-trading on 1h candles' : 'Auto mode — bot stopped';
+        else statusText.textContent = isRunning ? 'Running — accepting signals' : 'Stopped — signals ignored';
+      }
+    }
+
+    async function saveAutoSettings(systemId) {
+      const symbol = document.getElementById('sym-' + systemId)?.value.trim().toUpperCase();
+      const dollarAmount = parseFloat(document.getElementById('amt-' + systemId)?.value) || 500;
+      const interval = document.getElementById('int-' + systemId)?.value || '1h';
+      await sbClient.from('systems').update({
+        bot_symbol: symbol,
+        bot_dollar_amount: dollarAmount,
+        bot_interval: interval,
+      }).eq('id', systemId);
+      const resultEl = document.getElementById('run-result-' + systemId);
+      if (resultEl) { resultEl.textContent = '✓ Settings saved'; resultEl.className = 'run-result green'; setTimeout(() => { resultEl.textContent = ''; resultEl.className = 'run-result'; }, 2000); }
+    }
+
+    async function runBotNow(systemId, btn) {
+      const resultEl = document.getElementById('run-result-' + systemId);
+      btn.disabled = true;
+      btn.textContent = 'Running...';
+      if (resultEl) { resultEl.textContent = 'Checking signal...'; resultEl.className = 'run-result'; }
+      try {
+        const { data: { session } } = await sbClient.auth.getSession();
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/auto-bot`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+          body: JSON.stringify({ system_id: systemId, user_id: currentUserId })
+        });
+        const json = await res.json();
+        const r = json.results?.[0];
+        if (!r) { if (resultEl) { resultEl.textContent = 'No result returned'; resultEl.className = 'run-result'; } return; }
+        if (r.status === 'no_signal') {
+          if (resultEl) { resultEl.textContent = `No signal — ${r.reason}`; resultEl.className = 'run-result'; }
+        } else if (r.status === 'filled' || r.signal) {
+          if (resultEl) { resultEl.textContent = `✓ ${r.signal?.toUpperCase()} signal! ${r.symbol} @ $${r.price?.toFixed(2)} · qty ${r.quantity}`; resultEl.className = 'run-result green'; }
+          setTimeout(() => loadBots(), 1500);
+        } else if (r.status === 'skipped') {
+          if (resultEl) { resultEl.textContent = `Skipped — ${r.reason}`; resultEl.className = 'run-result'; }
+        } else if (r.status === 'error' || r.broker_error) {
+          if (resultEl) { resultEl.textContent = `Error: ${r.error || r.broker_error}`; resultEl.className = 'run-result red'; }
+        } else {
+          if (resultEl) { resultEl.textContent = JSON.stringify(r); resultEl.className = 'run-result'; }
+        }
+      } catch(e) {
+        if (resultEl) { resultEl.textContent = 'Error: ' + e.message; resultEl.className = 'run-result red'; }
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '▶ Run Now';
+      }
     }
 
     async function toggleBot(systemId, on) {
