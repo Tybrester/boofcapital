@@ -289,17 +289,42 @@
 
         <!-- Right: Trades feed + P&L -->
         <div class="trades-col">
-          <div class="trades-panel-header">
-            <div class="trades-panel-title">Bot Activity</div>
-            <div class="pnl-stats-grid" id="pnl-stats">
-              <div class="pnl-stat"><div class="pnl-stat-label">Total P&L</div><div class="pnl-stat-value neu" id="stat-pnl">—</div></div>
-              <div class="pnl-stat"><div class="pnl-stat-label">Win Rate</div><div class="pnl-stat-value neu" id="stat-wr">—</div></div>
-              <div class="pnl-stat"><div class="pnl-stat-label">Total Trades</div><div class="pnl-stat-value neu" id="stat-total">—</div></div>
-              <div class="pnl-stat"><div class="pnl-stat-label">Open</div><div class="pnl-stat-value neu" id="stat-open">—</div></div>
+          <!-- Tab switcher -->
+          <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:0;">
+            <button id="tab-stocks" onclick="switchActivityTab('stocks')" style="flex:1;padding:12px 8px;background:none;border:none;border-bottom:2px solid var(--accent);color:var(--accent);font-weight:700;font-size:0.8rem;cursor:pointer;font-family:inherit;">📈 Stock Bot</button>
+            <button id="tab-options" onclick="switchActivityTab('options')" style="flex:1;padding:12px 8px;background:none;border:none;border-bottom:2px solid transparent;color:var(--muted);font-weight:700;font-size:0.8rem;cursor:pointer;font-family:inherit;">⚡ Options Bot</button>
+          </div>
+
+          <!-- Stock Bot Activity -->
+          <div id="panel-stocks">
+            <div class="trades-panel-header">
+              <div class="trades-panel-title">Stock Bot Activity</div>
+              <div class="pnl-stats-grid" id="pnl-stats">
+                <div class="pnl-stat"><div class="pnl-stat-label">Total P&L</div><div class="pnl-stat-value neu" id="stat-pnl">—</div></div>
+                <div class="pnl-stat"><div class="pnl-stat-label">Win Rate</div><div class="pnl-stat-value neu" id="stat-wr">—</div></div>
+                <div class="pnl-stat"><div class="pnl-stat-label">Total Trades</div><div class="pnl-stat-value neu" id="stat-total">—</div></div>
+                <div class="pnl-stat"><div class="pnl-stat-label">Open</div><div class="pnl-stat-value neu" id="stat-open">—</div></div>
+              </div>
+            </div>
+            <div class="trades-feed" id="trades-feed">
+              <div class="feed-empty">Loading trades...</div>
             </div>
           </div>
-          <div class="trades-feed" id="trades-feed">
-            <div class="feed-empty">Loading trades...</div>
+
+          <!-- Options Bot Activity -->
+          <div id="panel-options" style="display:none;">
+            <div class="trades-panel-header">
+              <div class="trades-panel-title">Options Bot Activity</div>
+              <div class="pnl-stats-grid" id="opt-pnl-stats">
+                <div class="pnl-stat"><div class="pnl-stat-label">Total P&L</div><div class="pnl-stat-value neu" id="opt-stat-pnl">—</div></div>
+                <div class="pnl-stat"><div class="pnl-stat-label">Win Rate</div><div class="pnl-stat-value neu" id="opt-stat-wr">—</div></div>
+                <div class="pnl-stat"><div class="pnl-stat-label">Total Trades</div><div class="pnl-stat-value neu" id="opt-stat-total">—</div></div>
+                <div class="pnl-stat"><div class="pnl-stat-label">Open</div><div class="pnl-stat-value neu" id="opt-stat-open">—</div></div>
+              </div>
+            </div>
+            <div class="trades-feed" id="options-feed">
+              <div class="feed-empty">Loading options trades...</div>
+            </div>
           </div>
         </div>
       </main>
@@ -803,6 +828,74 @@
       await loadOptionsBots();
       await loadTrades();
       setInterval(loadTrades, 30000);
+    }
+
+    function switchActivityTab(tab) {
+      const stocksPanel = document.getElementById('panel-stocks');
+      const optionsPanel = document.getElementById('panel-options');
+      const tabStocks = document.getElementById('tab-stocks');
+      const tabOptions = document.getElementById('tab-options');
+      if (tab === 'stocks') {
+        stocksPanel.style.display = '';
+        optionsPanel.style.display = 'none';
+        tabStocks.style.borderBottomColor = 'var(--accent)'; tabStocks.style.color = 'var(--accent)';
+        tabOptions.style.borderBottomColor = 'transparent'; tabOptions.style.color = 'var(--muted)';
+      } else {
+        stocksPanel.style.display = 'none';
+        optionsPanel.style.display = '';
+        tabOptions.style.borderBottomColor = '#ffc107'; tabOptions.style.color = '#ffc107';
+        tabStocks.style.borderBottomColor = 'transparent'; tabStocks.style.color = 'var(--muted)';
+        loadOptionsTrades();
+      }
+    }
+
+    async function loadOptionsTrades() {
+      const feed = document.getElementById('options-feed');
+      const { data: trades } = await sbClient
+        .from('options_trades')
+        .select('*')
+        .eq('user_id', currentUserId)
+        .order('created_at', { ascending: false })
+        .limit(100);
+
+      const t = trades || [];
+      const closed = t.filter(x => x.pnl != null);
+      const wins = closed.filter(x => x.pnl > 0).length;
+      const totalPnl = closed.reduce((s, x) => s + Number(x.pnl), 0);
+      const winRate = closed.length > 0 ? Math.round(wins / closed.length * 100) : 0;
+      const openCount = t.filter(x => x.status === 'open').length;
+
+      const pnlEl = document.getElementById('opt-stat-pnl');
+      const wrEl  = document.getElementById('opt-stat-wr');
+      const totEl = document.getElementById('opt-stat-total');
+      const opnEl = document.getElementById('opt-stat-open');
+      if (pnlEl) { pnlEl.textContent = (totalPnl >= 0 ? '+' : '') + '$' + totalPnl.toFixed(2); pnlEl.className = 'pnl-stat-value ' + (totalPnl >= 0 ? 'pos' : 'neg'); }
+      if (wrEl)  { wrEl.textContent = winRate + '%'; wrEl.className = 'pnl-stat-value ' + (winRate >= 50 ? 'pos' : 'neg'); }
+      if (totEl) { totEl.textContent = t.length; totEl.className = 'pnl-stat-value neu'; }
+      if (opnEl) { opnEl.textContent = openCount; opnEl.className = 'pnl-stat-value neu'; }
+
+      if (t.length === 0) { feed.innerHTML = '<div class="feed-empty">No options trades yet</div>'; return; }
+
+      feed.innerHTML = t.map(tr => {
+        const isCall = tr.option_type === 'call';
+        const pnlClass = tr.pnl != null ? (tr.pnl >= 0 ? 'pos' : 'neg') : 'open';
+        const pnlText  = tr.pnl != null ? (tr.pnl >= 0 ? '+' : '') + '$' + Number(tr.pnl).toFixed(2) : 'Open';
+        const dt = new Date(tr.created_at);
+        const timeStr = dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' + dt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+        return `<div class="feed-row">
+          <div style="display:flex;align-items:center;gap:8px;min-width:0;">
+            <span class="feed-action ${isCall ? 'buy' : 'sell'}">${isCall ? 'CALL' : 'PUT'}</span>
+            <div>
+              <div class="feed-sym">${tr.symbol} $${tr.strike} ${tr.expiration_date}</div>
+              <div class="feed-price">${tr.contracts} contract${tr.contracts > 1 ? 's' : ''} @ $${Number(tr.premium_per_contract).toFixed(2)}</div>
+            </div>
+          </div>
+          <div style="text-align:right;flex-shrink:0;">
+            <div class="feed-pnl ${pnlClass}">${pnlText}</div>
+            <div class="feed-time">${timeStr}</div>
+          </div>
+        </div>`;
+      }).join('');
     }
 
     async function loadTrades() {
