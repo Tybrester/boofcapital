@@ -302,77 +302,17 @@
         return;
       }
 
-      // Fetch trade stats per system
-      const systemIds = systems.map(s => s.id);
-      const { data: trades } = await sbClient
-        .from('trades')
-        .select('id, system_id, action, status, created_at, price, quantity, symbol, pnl')
-        .eq('user_id', currentUserId)
-        .in('system_id', systemIds)
-        .order('created_at', { ascending: false });
-
-      const statsMap = {};
-      (trades || []).forEach(t => {
-        if (!statsMap[t.system_id]) statsMap[t.system_id] = { total: 0, filled: 0, lastSignal: null, totalPnl: 0, wins: 0, closedCount: 0, recentTrades: [] };
-        const sm = statsMap[t.system_id];
-        sm.total++;
-        if (t.status === 'filled' || t.status === 'closed') sm.filled++;
-        if (!sm.lastSignal || t.created_at > sm.lastSignal) sm.lastSignal = t.created_at;
-        if (t.pnl != null) { sm.totalPnl += Number(t.pnl); sm.closedCount++; if (t.pnl > 0) sm.wins++; }
-        if (sm.recentTrades.length < 5) sm.recentTrades.push(t);
-      });
-      // Compute win rates
-      Object.values(statsMap).forEach((sm) => {
-        sm.winRate = sm.closedCount > 0 ? Math.round((sm.wins / sm.closedCount) * 100) : 0;
-      });
-
-      // Overall P&L banner
-      const allTrades = trades || [];
-      const totalPnlAll = allTrades.reduce((s, t) => s + (t.pnl ? Number(t.pnl) : 0), 0);
-      const closedAll = allTrades.filter(t => t.pnl != null);
-      const winsAll = closedAll.filter(t => t.pnl > 0).length;
-      const winRateAll = closedAll.length > 0 ? Math.round((winsAll / closedAll.length) * 100) : 0;
-      const openAll = allTrades.filter(t => t.status === 'filled' && t.pnl == null).length;
-
-      container.innerHTML = `
-        <div class="pnl-banner">
-          <div class="pnl-banner-item">
-            <div class="pnl-banner-label">Total P&L (All Bots)</div>
-            <div class="pnl-banner-value" style="color:${totalPnlAll >= 0 ? 'var(--accent)' : 'var(--red)'};">${totalPnlAll >= 0 ? '+' : ''}$${totalPnlAll.toFixed(2)}</div>
-            <div class="pnl-banner-sub">${closedAll.length} closed trades</div>
-          </div>
-          <div class="pnl-banner-item">
-            <div class="pnl-banner-label">Win Rate</div>
-            <div class="pnl-banner-value" style="color:${winRateAll >= 50 ? 'var(--accent)' : 'var(--red)'};">${winRateAll}%</div>
-            <div class="pnl-banner-sub">${winsAll} wins / ${closedAll.length - winsAll} losses</div>
-          </div>
-          <div class="pnl-banner-item">
-            <div class="pnl-banner-label">Open Positions</div>
-            <div class="pnl-banner-value" style="color:var(--text);">${openAll}</div>
-            <div class="pnl-banner-sub">awaiting close</div>
-          </div>
-          <div class="pnl-banner-item">
-            <div class="pnl-banner-label">Active Bots</div>
-            <div class="pnl-banner-value" style="color:var(--accent);">${systems.filter(s => s.enabled && s.auto_submit).length}</div>
-            <div class="pnl-banner-sub">of ${systems.length} total</div>
-          </div>
-        </div>
-      `;
+      container.innerHTML = '';
 
       const grid = document.createElement('div');
       grid.className = 'bots-grid';
 
-
       systems.forEach(s => {
         const isRunning = s.enabled && s.auto_submit;
         const isAuto = (s.bot_mode === 'auto');
-        const stats = statsMap[s.id] || { total: 0, filled: 0, lastSignal: null, totalPnl: 0, winRate: 0, recentTrades: [] };
         const webhookUrl = buildWebhookUrl(currentUserId, s.id);
         const brokerLabel = s.broker === 'tastytrade' ? 'Tastytrade' : 'Paper';
         const brokerClass = s.broker === 'tastytrade' ? 'bot-broker-tastytrade' : 'bot-broker-paper';
-        const lastSignalStr = stats.lastSignal
-          ? new Date(stats.lastSignal).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-          : 'Never';
 
         const symbol = s.bot_symbol || 'SPY';
         const dollarAmt = s.bot_dollar_amount || 500;
@@ -520,40 +460,6 @@
             </div>
           </div>
 
-            <!-- P&L Stats -->
-          <div>
-            <div class="section-label" style="margin-bottom:8px;">Performance</div>
-            <div class="pnl-row">
-              <div class="pnl-box">
-                <div class="pnl-box-label">Total P&L</div>
-                <div class="pnl-box-value ${stats.totalPnl >= 0 ? 'green' : 'red'}" id="pnl-total-${s.id}">${stats.totalPnl >= 0 ? '+' : ''}$${stats.totalPnl.toFixed(2)}</div>
-              </div>
-              <div class="pnl-box">
-                <div class="pnl-box-label">Win Rate</div>
-                <div class="pnl-box-value neutral" id="pnl-wr-${s.id}">${stats.winRate}%</div>
-              </div>
-              <div class="pnl-box">
-                <div class="pnl-box-label">Trades</div>
-                <div class="pnl-box-value neutral">${stats.filled} filled</div>
-              </div>
-            </div>
-            <!-- Recent trades log -->
-            <div class="trade-log" id="trade-log-${s.id}">
-              ${stats.recentTrades.length === 0 ? '<div style="font-size:0.78rem;color:#444;padding:10px 0;">No trades yet</div>' : stats.recentTrades.map(t => `
-                <div class="trade-log-row">
-                  <div style="display:flex;align-items:center;gap:8px;">
-                    <span class="trade-log-action ${t.action}">${t.action.toUpperCase()}</span>
-                    <span class="trade-log-sym">${t.symbol}</span>
-                    <span style="color:#444;font-size:0.72rem;">@$${Number(t.price).toFixed(2)}</span>
-                  </div>
-                  <div style="display:flex;align-items:center;gap:12px;">
-                    <span style="color:#555;font-size:0.72rem;">${new Date(t.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span>
-                    <span class="trade-log-pnl ${t.pnl != null ? (t.pnl >= 0 ? 'pos' : 'neg') : 'open'}">${t.pnl != null ? (t.pnl >= 0 ? '+' : '') + '$' + Number(t.pnl).toFixed(2) : 'Open'}</span>
-                  </div>
-                </div>
-              `).join('')}
-            </div>
-          </div>
 
           <!-- Webhook mode settings -->
           <div id="webhook-section-${s.id}" style="display:${isAuto ? 'none' : 'block'}">
