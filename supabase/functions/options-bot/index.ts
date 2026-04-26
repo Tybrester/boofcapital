@@ -237,6 +237,24 @@ Deno.serve(async (req) => {
     const results: object[] = [];
     const R = 0.05; // risk-free rate
 
+    const SCAN_STOCKS = [
+      'AAPL','MSFT','AMZN','NVDA','TSLA','GOOG','GOOGL','META','NFLX','BRK-B',
+      'JPM','BAC','WFC','V','MA','PG','KO','PFE','UNH','HD',
+      'INTC','CSCO','ADBE','CRM','ORCL','AMD','QCOM','TXN','IBM','AVGO',
+      'XOM','CVX','BA','CAT','MMM','GE','HON','LMT','NOC','DE',
+      'C','GS','MS','AXP','BLK','SCHW','BK','SPGI','ICE',
+      'MRK','ABBV','AMGN','BMY','LLY','GILD','JNJ','REGN','VRTX','BIIB',
+      'WMT','COST','TGT','LOW','MCD','SBUX','NKE','BKNG',
+      'SNAP','UBER','LYFT','SPOT','ZM','DOCU','PINS','ROKU','SHOP',
+      'CVS','TMO','MDT','ISRG','F','GM',
+    ];
+    const SCAN_CRYPTO = [
+      'BTC-USD','ETH-USD','SOL-USD','XRP-USD','BNB-USD','DOGE-USD','ADA-USD',
+      'AVAX-USD','LINK-USD','MATIC-USD','LTC-USD','UNI-USD','SHIB-USD','TON-USD',
+      'DOT-USD','TRX-USD','NEAR-USD','APT-USD','ARB-USD','SUI-USD',
+    ];
+    const SCAN_ALL = [...SCAN_STOCKS, ...SCAN_CRYPTO];
+
     for (const bot of bots) {
       const settings: BotSettings = {
         atrLength:      bot.bot_atr_length     ?? 10,
@@ -254,109 +272,92 @@ Deno.serve(async (req) => {
         manualStrike:   bot.bot_manual_strike  ?? null,
       };
 
+      const scanMode: string = (bot.bot_scan_mode as string) || 'single';
+      const symbolList = scanMode === 'scan_stocks' ? SCAN_STOCKS : scanMode === 'scan_crypto' ? SCAN_CRYPTO : scanMode === 'scan_all' ? SCAN_ALL : [settings.symbol];
+
       try {
-        const candles = await fetchCandles(settings.symbol, settings.interval, 150);
-        if (candles.length < 60) { results.push({ bot_id: bot.id, status: 'skipped', reason: 'Not enough candle data' }); continue; }
+        for (let i = 0; i < symbolList.length; i += 10) {
+          const batch = symbolList.slice(i, i + 10);
+          await Promise.all(batch.map(async (sym) => {
+            try {
+              const candles = await fetchCandles(sym, settings.interval, 150);
+              if (candles.length < 60) { results.push({ bot_id: bot.id, symbol: sym, status: 'skipped', reason: 'Not enough candle data' }); return; }
 
-        const { signal, price, trend, ema, adx, reason } = generateSignal(candles, settings);
-        if (signal === 'none') { results.push({ bot_id: bot.id, symbol: settings.symbol, status: 'no_signal', reason }); continue; }
-        if (signal === 'buy'  && settings.tradeDirection === 'short') { results.push({ bot_id: bot.id, status: 'skipped', reason: 'Direction filter' }); continue; }
-        if (signal === 'sell' && settings.tradeDirection === 'long')  { results.push({ bot_id: bot.id, status: 'skipped', reason: 'Direction filter' }); continue; }
+              const { signal, price, reason } = generateSignal(candles, settings);
+              if (signal === 'none') { results.push({ bot_id: bot.id, symbol: sym, status: 'no_signal', reason }); return; }
+              if (signal === 'buy'  && settings.tradeDirection === 'short') { results.push({ bot_id: bot.id, symbol: sym, status: 'skipped', reason: 'Direction filter' }); return; }
+              if (signal === 'sell' && settings.tradeDirection === 'long')  { results.push({ bot_id: bot.id, symbol: sym, status: 'skipped', reason: 'Direction filter' }); return; }
 
-        // Duplicate check — skip if same signal fired in last 4 hours
-        const fourHoursAgo = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
-        const { data: recent } = await supabase.from('options_trades').select('signal').eq('bot_id', bot.id).eq('symbol', settings.symbol).gte('created_at', fourHoursAgo).limit(1);
-        if (recent && recent.length > 0 && recent[0].signal === signal) {
-          results.push({ bot_id: bot.id, status: 'skipped', reason: `Duplicate ${signal} within 4h` }); continue;
-        }
+              // Duplicate check
+              const fourHoursAgo = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
+              const { data: recent } = await supabase.from('options_trades').select('signal').eq('bot_id', bot.id).eq('symbol', sym).gte('created_at', fourHoursAgo).limit(1);
+              if (recent && recent.length > 0 && recent[0].signal === signal) { results.push({ bot_id: bot.id, symbol: sym, status: 'skipped', reason: `Duplicate ${signal} within 4h` }); return; }
 
-        // Close any open opposite position first
-        const { data: openTrades } = await supabase.from('options_trades').select('*').eq('bot_id', bot.id).eq('symbol', settings.symbol).eq('status', 'open');
-        if (openTrades && openTrades.length > 0) {
-          for (const open of openTrades) {
-            const optType: 'call' | 'put' = open.option_type;
-            const sigma = calcHistoricalVolatility(candles.map(c => c.close));
-            const expDate = new Date(open.expiration_date);
-            const T = Math.max(0, (expDate.getTime() - Date.now()) / (365 * 24 * 60 * 60 * 1000));
-            const exitPremium = blackScholes(price, open.strike, T, R, sigma, optType);
-            const pnl = (exitPremium - open.premium_per_contract) * open.contracts * 100;
-            await supabase.from('options_trades').update({ status: 'closed', exit_price: exitPremium, pnl, closed_at: new Date().toISOString() }).eq('id', open.id);
-          }
-        }
-
-        // Determine option type from signal
-        const optionType: 'call' | 'put' = signal === 'buy' ? 'call' : 'put';
-
-        // Black-Scholes pricing
-        const sigma = calcHistoricalVolatility(candles.map(c => c.close));
-        const expirationDate = getExpirationDate(settings.expiryType);
-        const expDate = new Date(expirationDate);
-        const T = Math.max(1 / 365, (expDate.getTime() - Date.now()) / (365 * 24 * 60 * 60 * 1000));
-
-        // Strike selection: budget mode or manual
-        const strikeInterval = price > 500 ? 5 : price > 100 ? 5 : price > 50 ? 2.5 : 1;
-        let strike: number;
-        let premium: number;
-
-        if (settings.strikeMode === 'manual' && settings.manualStrike && settings.manualStrike > 0) {
-          // Manual: use exactly the strike the user specified
-          strike = settings.manualStrike;
-          premium = blackScholes(price, strike, T, R, sigma, optionType);
-        } else {
-          // Budget mode: find the best strike within the dollar budget
-          // Try ITM → ATM → OTM until we find one we can afford at least 1 contract
-          const atmStrike = Math.round(price / strikeInterval) * strikeInterval;
-          const candidateStrikes: number[] = [];
-          for (let offset = -5; offset <= 5; offset++) {
-            const s = atmStrike + offset * strikeInterval;
-            if (s > 0) candidateStrikes.push(s);
-          }
-          // Sort by how affordable: pick best premium we can buy ≥1 contract of within budget
-          let bestStrike = atmStrike;
-          let bestPremium = blackScholes(price, atmStrike, T, R, sigma, optionType);
-          for (const s of candidateStrikes) {
-            const p = blackScholes(price, s, T, R, sigma, optionType);
-            const cost = p * 100; // 1 contract
-            if (cost <= settings.dollarAmount && p > bestPremium * 0.1) {
-              // Prefer higher premium (more value) that still fits budget
-              if (p > bestPremium || bestPremium * 100 > settings.dollarAmount) {
-                bestStrike = s;
-                bestPremium = p;
+              // Close open opposite positions
+              const { data: openTrades } = await supabase.from('options_trades').select('*').eq('bot_id', bot.id).eq('symbol', sym).eq('status', 'open');
+              const sigma = calcHistoricalVolatility(candles.map(c => c.close));
+              if (openTrades && openTrades.length > 0) {
+                for (const open of openTrades) {
+                  const optType: 'call' | 'put' = open.option_type;
+                  const expDate = new Date(open.expiration_date);
+                  const T = Math.max(0, (expDate.getTime() - Date.now()) / (365 * 24 * 60 * 60 * 1000));
+                  const exitPremium = blackScholes(price, open.strike, T, R, sigma, optType);
+                  const pnl = (exitPremium - open.premium_per_contract) * open.contracts * 100;
+                  await supabase.from('options_trades').update({ status: 'closed', exit_price: exitPremium, pnl, closed_at: new Date().toISOString() }).eq('id', open.id);
+                }
               }
+
+              const optionType: 'call' | 'put' = signal === 'buy' ? 'call' : 'put';
+              const expirationDate = getExpirationDate(settings.expiryType);
+              const expDate = new Date(expirationDate);
+              const T = Math.max(1 / 365, (expDate.getTime() - Date.now()) / (365 * 24 * 60 * 60 * 1000));
+              const strikeInterval = price > 500 ? 5 : price > 100 ? 5 : price > 50 ? 2.5 : 1;
+
+              let strike: number;
+              let premium: number;
+
+              if (settings.strikeMode === 'manual' && settings.manualStrike && settings.manualStrike > 0) {
+                strike = settings.manualStrike;
+                premium = blackScholes(price, strike, T, R, sigma, optionType);
+              } else {
+                const atmStrike = Math.round(price / strikeInterval) * strikeInterval;
+                let bestStrike = atmStrike;
+                let bestPremium = blackScholes(price, atmStrike, T, R, sigma, optionType);
+                for (let offset = -5; offset <= 5; offset++) {
+                  const s = atmStrike + offset * strikeInterval;
+                  if (s <= 0) continue;
+                  const p = blackScholes(price, s, T, R, sigma, optionType);
+                  if (p * 100 <= settings.dollarAmount && (p > bestPremium || bestPremium * 100 > settings.dollarAmount)) {
+                    bestStrike = s; bestPremium = p;
+                  }
+                }
+                strike = bestStrike; premium = bestPremium;
+              }
+
+              if (premium <= 0.01) { results.push({ bot_id: bot.id, symbol: sym, status: 'skipped', reason: 'Premium too low' }); return; }
+
+              const contracts = Math.max(1, Math.floor(settings.dollarAmount / (premium * 100)));
+              const totalCost = contracts * premium * 100;
+
+              const { data: botRow } = await supabase.from('options_bots').select('paper_balance').eq('id', bot.id).single();
+              const currentBalance = Number(botRow?.paper_balance ?? 150000);
+              await supabase.from('options_bots').update({ paper_balance: Math.max(0, currentBalance - totalCost) }).eq('id', bot.id);
+
+              await supabase.from('options_trades').insert({
+                user_id: bot.user_id, bot_id: bot.id, symbol: sym,
+                option_type: optionType, strike, expiration_date: expirationDate,
+                contracts, premium_per_contract: premium, total_cost: totalCost,
+                entry_price: premium, status: 'open', signal, reason,
+                created_at: new Date().toISOString(),
+              });
+
+              results.push({ bot_id: bot.id, status: 'filled', symbol: sym, option_type: optionType, strike, expiration_date: expirationDate, contracts, premium: premium.toFixed(2), total_cost: totalCost.toFixed(2), sigma: (sigma * 100).toFixed(1) + '%', signal, reason });
+
+            } catch (err) {
+              results.push({ bot_id: bot.id, symbol: sym, status: 'error', error: String(err) });
             }
-          }
-          strike = bestStrike;
-          premium = bestPremium;
+          }));
         }
-
-        if (premium <= 0.01) { results.push({ bot_id: bot.id, status: 'skipped', reason: 'Premium too low' }); continue; }
-
-        // Calculate contracts based on dollar amount
-        const contracts = Math.max(1, Math.floor(settings.dollarAmount / (premium * 100)));
-        const totalCost = contracts * premium * 100;
-
-        // Update paper balance
-        const { data: botRow } = await supabase.from('options_bots').select('paper_balance').eq('id', bot.id).single();
-        const currentBalance = Number(botRow?.paper_balance ?? 150000);
-        const newBalance = Math.max(0, currentBalance - totalCost);
-        await supabase.from('options_bots').update({ paper_balance: newBalance }).eq('id', bot.id);
-
-        // Log the trade
-        await supabase.from('options_trades').insert({
-          user_id: bot.user_id, bot_id: bot.id, symbol: settings.symbol,
-          option_type: optionType, strike, expiration_date: expirationDate,
-          contracts, premium_per_contract: premium, total_cost: totalCost,
-          entry_price: premium, status: 'open', signal, reason,
-          created_at: new Date().toISOString(),
-        });
-
-        results.push({
-          bot_id: bot.id, status: 'filled', symbol: settings.symbol,
-          option_type: optionType, strike, expiration_date: expirationDate,
-          contracts, premium: premium.toFixed(2), total_cost: totalCost.toFixed(2),
-          sigma: (sigma * 100).toFixed(1) + '%', signal, reason,
-        });
-
       } catch (err) {
         results.push({ bot_id: bot.id, status: 'error', error: String(err) });
       }

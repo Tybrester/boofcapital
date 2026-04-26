@@ -386,7 +386,15 @@
           <div class="settings-lock-wrap">
             <div class="auto-settings">
               <div class="section-label">Settings</div>
-              <div class="auto-settings-row"><span>Symbol</span><input class="auto-input" id="osym-${b.id}" value="${b.bot_symbol||'SPY'}" placeholder="SPY"/></div>
+              <div class="auto-settings-row"><span>Scan Mode</span>
+                <select class="auto-input wide" id="oscan-${b.id}" onchange="toggleOptScanMode('${b.id}', this.value)">
+                  <option value="single" ${!b.bot_scan_mode||b.bot_scan_mode==='single'?'selected':''}>Single Symbol</option>
+                  <option value="scan_stocks" ${b.bot_scan_mode==='scan_stocks'?'selected':''}>Top Stocks</option>
+                  <option value="scan_crypto" ${b.bot_scan_mode==='scan_crypto'?'selected':''}>Top Crypto</option>
+                  <option value="scan_all" ${b.bot_scan_mode==='scan_all'?'selected':''}>All Markets</option>
+                </select>
+              </div>
+              <div id="osym-row-${b.id}" style="${b.bot_scan_mode&&b.bot_scan_mode!=='single'?'display:none':''}"><div class="auto-settings-row"><span>Symbol</span><input class="auto-input" id="osym-${b.id}" value="${b.bot_symbol||'SPY'}" placeholder="SPY"/></div></div>
               <div class="auto-settings-row"><span>$ Per Trade</span><input class="auto-input" id="odol-${b.id}" type="number" value="${b.bot_dollar_amount||500}" min="100"/></div>
               <div class="auto-settings-row"><span>Interval</span>
                 <select class="auto-input wide" id="oint-${b.id}">
@@ -437,6 +445,11 @@
       container.appendChild(grid);
     }
 
+    function toggleOptScanMode(botId, mode) {
+      const symRow = document.getElementById('osym-row-' + botId);
+      if (symRow) symRow.style.display = mode === 'single' ? '' : 'none';
+    }
+
     function setStrikeMode(botId, mode) {
       ['budget','manual'].forEach(m => {
         const btn = document.getElementById(`osm-${m}-${botId}`);
@@ -470,7 +483,8 @@
       const dir = ['both','long','short'].find(d => document.getElementById(`odir-${d}-${botId}`)?.classList.contains('active')) || 'both';
       const strikeMode = ['budget','manual'].find(m => document.getElementById(`osm-${m}-${botId}`)?.classList.contains('active')) || 'budget';
       const manualStrike = parseFloat(document.getElementById('ostrike-' + botId)?.value) || null;
-      await sbClient.from('options_bots').update({ bot_symbol: sym, bot_dollar_amount: dol, bot_interval: int, bot_expiry_type: expiry, bot_trade_direction: dir, bot_strike_mode: strikeMode, bot_manual_strike: strikeMode === 'manual' ? manualStrike : null }).eq('id', botId);
+      const scanMode = document.getElementById('oscan-' + botId)?.value || 'single';
+      await sbClient.from('options_bots').update({ bot_symbol: sym, bot_dollar_amount: dol, bot_interval: int, bot_expiry_type: expiry, bot_trade_direction: dir, bot_strike_mode: strikeMode, bot_manual_strike: strikeMode === 'manual' ? manualStrike : null, bot_scan_mode: scanMode }).eq('id', botId);
       const r = document.getElementById('opt-run-result-' + botId);
       if (r) { r.textContent = '✓ Settings saved'; r.className = 'run-result green'; setTimeout(() => { r.textContent=''; r.className='run-result'; }, 2000); }
     }
