@@ -89,6 +89,28 @@
     .stat-value.red { color: var(--red); }
     .stat-value.neutral { color: var(--text); }
 
+    .pnl-banner { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px 24px; margin-bottom: 28px; }
+    .pnl-banner-item { display: flex; flex-direction: column; gap: 4px; }
+    .pnl-banner-label { font-size: 0.7rem; font-weight: 700; color: #555; text-transform: uppercase; letter-spacing: 0.08em; }
+    .pnl-banner-value { font-size: 1.5rem; font-weight: 900; letter-spacing: -0.03em; }
+    .pnl-banner-sub { font-size: 0.75rem; color: var(--muted); }
+
+    .pnl-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+    .pnl-box { background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 8px; padding: 10px 14px; text-align: center; }
+    .pnl-box-label { font-size: 0.65rem; color: #555; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
+    .pnl-box-value { font-size: 0.95rem; font-weight: 800; margin-top: 2px; }
+
+    .trade-log { margin-top: 6px; }
+    .trade-log-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #141414; font-size: 0.8rem; }
+    .trade-log-row:last-child { border-bottom: none; }
+    .trade-log-sym { font-weight: 700; color: var(--text); }
+    .trade-log-action { font-size: 0.7rem; font-weight: 700; padding: 2px 8px; border-radius: 10px; }
+    .trade-log-action.buy { background: rgba(0,230,118,0.1); color: var(--accent); }
+    .trade-log-action.sell { background: rgba(255,23,68,0.1); color: var(--red); }
+    .trade-log-pnl.pos { color: var(--accent); font-weight: 700; }
+    .trade-log-pnl.neg { color: var(--red); font-weight: 700; }
+    .trade-log-pnl.open { color: var(--muted); }
+
     .pine-section { background: #0d0d0d; border: 1px solid #1a1a1a; border-radius: 10px; padding: 16px; }
     .pine-section h3 { font-size: 0.82rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 12px; }
     .pine-code { font-family: 'Courier New', monospace; font-size: 0.75rem; color: #7fffb2; background: #080808; border-radius: 8px; padding: 14px; white-space: pre-wrap; word-break: break-word; line-height: 1.6; }
@@ -268,19 +290,58 @@
       const systemIds = systems.map(s => s.id);
       const { data: trades } = await sbClient
         .from('trades')
-        .select('system_id, action, status, created_at')
+        .select('id, system_id, action, status, created_at, price, quantity, symbol, pnl')
         .eq('user_id', currentUserId)
-        .in('system_id', systemIds);
+        .in('system_id', systemIds)
+        .order('created_at', { ascending: false });
 
       const statsMap = {};
       (trades || []).forEach(t => {
-        if (!statsMap[t.system_id]) statsMap[t.system_id] = { total: 0, filled: 0, lastSignal: null };
-        statsMap[t.system_id].total++;
-        if (t.status === 'filled') statsMap[t.system_id].filled++;
-        if (!statsMap[t.system_id].lastSignal || t.created_at > statsMap[t.system_id].lastSignal) {
-          statsMap[t.system_id].lastSignal = t.created_at;
-        }
+        if (!statsMap[t.system_id]) statsMap[t.system_id] = { total: 0, filled: 0, lastSignal: null, totalPnl: 0, wins: 0, closedCount: 0, recentTrades: [] };
+        const sm = statsMap[t.system_id];
+        sm.total++;
+        if (t.status === 'filled' || t.status === 'closed') sm.filled++;
+        if (!sm.lastSignal || t.created_at > sm.lastSignal) sm.lastSignal = t.created_at;
+        if (t.pnl != null) { sm.totalPnl += Number(t.pnl); sm.closedCount++; if (t.pnl > 0) sm.wins++; }
+        if (sm.recentTrades.length < 5) sm.recentTrades.push(t);
       });
+      // Compute win rates
+      Object.values(statsMap).forEach((sm) => {
+        sm.winRate = sm.closedCount > 0 ? Math.round((sm.wins / sm.closedCount) * 100) : 0;
+      });
+
+      // Overall P&L banner
+      const allTrades = trades || [];
+      const totalPnlAll = allTrades.reduce((s, t) => s + (t.pnl ? Number(t.pnl) : 0), 0);
+      const closedAll = allTrades.filter(t => t.pnl != null);
+      const winsAll = closedAll.filter(t => t.pnl > 0).length;
+      const winRateAll = closedAll.length > 0 ? Math.round((winsAll / closedAll.length) * 100) : 0;
+      const openAll = allTrades.filter(t => t.status === 'filled' && t.pnl == null).length;
+
+      container.innerHTML = `
+        <div class="pnl-banner">
+          <div class="pnl-banner-item">
+            <div class="pnl-banner-label">Total P&L (All Bots)</div>
+            <div class="pnl-banner-value" style="color:${totalPnlAll >= 0 ? 'var(--accent)' : 'var(--red)'};">${totalPnlAll >= 0 ? '+' : ''}$${totalPnlAll.toFixed(2)}</div>
+            <div class="pnl-banner-sub">${closedAll.length} closed trades</div>
+          </div>
+          <div class="pnl-banner-item">
+            <div class="pnl-banner-label">Win Rate</div>
+            <div class="pnl-banner-value" style="color:${winRateAll >= 50 ? 'var(--accent)' : 'var(--red)'};">${winRateAll}%</div>
+            <div class="pnl-banner-sub">${winsAll} wins / ${closedAll.length - winsAll} losses</div>
+          </div>
+          <div class="pnl-banner-item">
+            <div class="pnl-banner-label">Open Positions</div>
+            <div class="pnl-banner-value" style="color:var(--text);">${openAll}</div>
+            <div class="pnl-banner-sub">awaiting close</div>
+          </div>
+          <div class="pnl-banner-item">
+            <div class="pnl-banner-label">Active Bots</div>
+            <div class="pnl-banner-value" style="color:var(--accent);">${systems.filter(s => s.enabled && s.auto_submit).length}</div>
+            <div class="pnl-banner-sub">of ${systems.length} total</div>
+          </div>
+        </div>
+      `;
 
       const grid = document.createElement('div');
       grid.className = 'bots-grid';
@@ -288,7 +349,7 @@
       systems.forEach(s => {
         const isRunning = s.enabled && s.auto_submit;
         const isAuto = (s.bot_mode === 'auto');
-        const stats = statsMap[s.id] || { total: 0, filled: 0, lastSignal: null };
+        const stats = statsMap[s.id] || { total: 0, filled: 0, lastSignal: null, totalPnl: 0, winRate: 0, recentTrades: [] };
         const webhookUrl = buildWebhookUrl(currentUserId, s.id);
         const brokerLabel = s.broker === 'tastytrade' ? 'Tastytrade' : 'Paper';
         const brokerClass = s.broker === 'tastytrade' ? 'bot-broker-tastytrade' : 'bot-broker-paper';
@@ -434,19 +495,38 @@
             </div>
           </div>
 
-          <!-- Stats -->
-          <div class="bot-stats">
-            <div class="stat-box">
-              <div class="stat-label">Total Signals</div>
-              <div class="stat-value neutral">${stats.total}</div>
+            <!-- P&L Stats -->
+          <div>
+            <div class="section-label" style="margin-bottom:8px;">Performance</div>
+            <div class="pnl-row">
+              <div class="pnl-box">
+                <div class="pnl-box-label">Total P&L</div>
+                <div class="pnl-box-value ${stats.totalPnl >= 0 ? 'green' : 'red'}" id="pnl-total-${s.id}">${stats.totalPnl >= 0 ? '+' : ''}$${stats.totalPnl.toFixed(2)}</div>
+              </div>
+              <div class="pnl-box">
+                <div class="pnl-box-label">Win Rate</div>
+                <div class="pnl-box-value neutral" id="pnl-wr-${s.id}">${stats.winRate}%</div>
+              </div>
+              <div class="pnl-box">
+                <div class="pnl-box-label">Trades</div>
+                <div class="pnl-box-value neutral">${stats.filled} filled</div>
+              </div>
             </div>
-            <div class="stat-box">
-              <div class="stat-label">Orders Filled</div>
-              <div class="stat-value green">${stats.filled}</div>
-            </div>
-            <div class="stat-box" style="grid-column:1/-1;">
-              <div class="stat-label">Last Signal</div>
-              <div class="stat-value neutral" style="font-size:0.88rem;">${lastSignalStr}</div>
+            <!-- Recent trades log -->
+            <div class="trade-log" id="trade-log-${s.id}">
+              ${stats.recentTrades.length === 0 ? '<div style="font-size:0.78rem;color:#444;padding:10px 0;">No trades yet</div>' : stats.recentTrades.map(t => `
+                <div class="trade-log-row">
+                  <div style="display:flex;align-items:center;gap:8px;">
+                    <span class="trade-log-action ${t.action}">${t.action.toUpperCase()}</span>
+                    <span class="trade-log-sym">${t.symbol}</span>
+                    <span style="color:#444;font-size:0.72rem;">@$${Number(t.price).toFixed(2)}</span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:12px;">
+                    <span style="color:#555;font-size:0.72rem;">${new Date(t.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span>
+                    <span class="trade-log-pnl ${t.pnl != null ? (t.pnl >= 0 ? 'pos' : 'neg') : 'open'}">${t.pnl != null ? (t.pnl >= 0 ? '+' : '') + '$' + Number(t.pnl).toFixed(2) : 'Open'}</span>
+                  </div>
+                </div>
+              `).join('')}
             </div>
           </div>
 
