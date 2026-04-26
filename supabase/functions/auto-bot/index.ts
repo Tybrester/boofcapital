@@ -131,32 +131,46 @@ function calcDMI(
 }
 
 // ─────────────────────────────────────────────
-// FETCH CANDLES  (Yahoo Finance 1h)
+// FETCH CANDLES  (Polygon.io)
 // ─────────────────────────────────────────────
 
 interface Candle { time: number; open: number; high: number; low: number; close: number; }
 
-async function fetchCandles(symbol: string, interval = '1h', bars = 100): Promise<Candle[]> {
-  const rangeMap: Record<string, string> = {
-    '1m': '5d', '5m': '60d', '15m': '60d', '30m': '60d',
-    '1h': '60d', '4h': '730d', '1d': '730d',
+async function fetchCandles(symbol: string, interval = '1h', bars = 150): Promise<Candle[]> {
+  const POLYGON_KEY = Deno.env.get('POLYGON_API_KEY')!;
+
+  // Map interval to Polygon multiplier/timespan
+  const intervalMap: Record<string, { multiplier: number; timespan: string; days: number }> = {
+    '1m':  { multiplier: 1,  timespan: 'minute', days: 5   },
+    '5m':  { multiplier: 5,  timespan: 'minute', days: 10  },
+    '15m': { multiplier: 15, timespan: 'minute', days: 20  },
+    '30m': { multiplier: 30, timespan: 'minute', days: 30  },
+    '1h':  { multiplier: 1,  timespan: 'hour',   days: 60  },
+    '4h':  { multiplier: 4,  timespan: 'hour',   days: 180 },
+    '1d':  { multiplier: 1,  timespan: 'day',    days: 365 },
   };
-  const range = rangeMap[interval] || '60d';
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=${interval}&range=${range}`;
-  const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+  const { multiplier, timespan, days } = intervalMap[interval] ?? intervalMap['1h'];
+
+  // Polygon uses X: prefix for crypto, plain ticker for stocks
+  const isCrypto = symbol.endsWith('-USD');
+  const polygonTicker = isCrypto
+    ? 'X:' + symbol.replace('-USD', 'USD')
+    : symbol.replace('.', '-'); // handle BRK.B → BRK-B (already correct)
+
+  const to   = new Date();
+  const from = new Date(to.getTime() - days * 24 * 60 * 60 * 1000);
+  const fromStr = from.toISOString().split('T')[0];
+  const toStr   = to.toISOString().split('T')[0];
+
+  const url = `https://api.polygon.io/v2/aggs/ticker/${polygonTicker}/range/${multiplier}/${timespan}/${fromStr}/${toStr}?adjusted=true&sort=asc&limit=50000&apiKey=${POLYGON_KEY}`;
+  const res = await fetch(url);
   const json = await res.json();
-  const result = json?.chart?.result?.[0];
-  if (!result) throw new Error(`No data for ${symbol}`);
-  const ts: number[] = result.timestamp;
-  const q = result.indicators.quote[0];
-  const candles: Candle[] = [];
-  for (let i = 0; i < ts.length; i++) {
-    if (q.close[i] == null) continue;
-    candles.push({
-      time: ts[i], open: q.open[i], high: q.high[i],
-      low: q.low[i], close: q.close[i],
-    });
-  }
+
+  if (!json.results || json.results.length === 0) throw new Error(`No Polygon data for ${symbol} (${json.status}: ${json.error ?? ''})`);
+
+  const candles: Candle[] = json.results.map((r: { t: number; o: number; h: number; l: number; c: number }) => ({
+    time: r.t, open: r.o, high: r.h, low: r.l, close: r.c,
+  }));
   return candles.slice(-bars);
 }
 
@@ -371,12 +385,27 @@ Deno.serve(async (req) => {
     }
 
     // ── Symbol lists for scan mode ──────────────────────────────────────────
+    // SP500 representative (~200 largest) + NQ100
     const SCAN_STOCKS = [
-      'SPY','QQQ','AAPL','MSFT','NVDA','TSLA','AMZN','GOOGL','META','NFLX',
-      'AMD','INTC','AVGO','ORCL','CRM','ADBE','PYPL','SQ','SHOP','UBER',
-      'DIS','BA','JPM','GS','BAC','WFC','V','MA','BRK-B','UNH',
-      'XOM','CVX','PFE','JNJ','KO','PEP','WMT','TGT','COST','HD',
-      'T','VZ','CSCO','IBM','MU','QCOM','TXN','ARM','PLTR','COIN',
+      // NQ100 core
+      'QQQ','AAPL','MSFT','NVDA','AMZN','META','TSLA','GOOGL','GOOG','AVGO',
+      'COST','NFLX','AMD','ADBE','QCOM','LIN','TXN','INTU','ISRG','AMGN',
+      'CMCSA','PEP','HON','VRTX','REGN','PANW','KLAC','LRCX','SNPS','CDNS',
+      'MRVL','ASML','ABNB','CRWD','FTNT','DXCM','CEG','MRNA','IDXX','BIIB',
+      'CSGP','TTWO','ILMN','WBD','ZS','SIRI','DLTR','FANG','FAST','PCAR',
+      // SP500 large caps
+      'SPY','V','MA','JPM','UNH','JNJ','WMT','XOM','BAC','PG',
+      'HD','CVX','MRK','ABBV','KO','PFE','LLY','TMO','MCD','ACN',
+      'DHR','NEE','ABT','ORCL','CRM','WFC','BMY','MS','GS','RTX',
+      'CAT','UPS','NOW','SPGI','AXP','BLK','DE','MMM','GE','SCHW',
+      'C','CB','TJX','SYK','ZTS','ADI','MDLZ','GILD','CI','BDX',
+      'USB','PLD','MO','EOG','DUK','SO','ICE','ITW','CME','PNC',
+      'AON','HCA','CL','FDX','EMR','EW','PSA','NSC','D','APD',
+      'BSX','MCO','ROP','TGT','REGN','SHW','TFC','AIG','MET','ADP',
+      'WELL','ELV','MCHP','F','GM','UBER','LYFT','ABNB','DASH','RBLX',
+      'PLTR','COIN','HOOD','SOFI','SQ','PYPL','SHOP','SNOW','DDOG','NET',
+      'ZM','ROKU','TWLO','U','PATH','AI','GTLB','MDB','CFLT','BILL',
+      'ARM','SMCI','ANET','ONTO','AMBA','ALGN','PODD','AXNX','TMDX','CELH',
     ];
     const SCAN_CRYPTO = [
       'BTC-USD','ETH-USD','SOL-USD','BNB-USD','XRP-USD','ADA-USD','AVAX-USD',
