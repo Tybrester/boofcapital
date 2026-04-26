@@ -302,6 +302,8 @@
         const broker = s.broker || 'paper';
         const brokerIsTasty = broker === 'tastytrade';
         const botDir = s.bot_trade_direction || 'both';
+        const scanMode = s.bot_scan_mode || 'single';
+        const isScan = scanMode !== 'single';
 
         const autoStatus = isAuto
           ? (isRunning ? 'Auto-trading on 1h candles' : 'Auto mode — bot stopped')
@@ -349,7 +351,22 @@
           <div id="auto-settings-${s.id}" style="display:${isAuto ? 'block' : 'none'}">
             <div class="section-label">Auto Bot Settings</div>
             <div class="auto-settings">
-              <div class="auto-settings-row">
+              <!-- Scan Mode -->
+              <div class="auto-settings-row" style="align-items:flex-start;">
+                <span style="padding-top:2px;">Scan Mode</span>
+                <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">
+                  <div style="display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end;">
+                    <button type="button" class="dir-pill ${scanMode==='single'?'active':''}" id="scan-single-${s.id}" onclick="setScanMode('${s.id}','single')">Single</button>
+                    <button type="button" class="dir-pill ${scanMode==='scan_stocks'?'active':''}" id="scan-scan_stocks-${s.id}" onclick="setScanMode('${s.id}','scan_stocks')">Top Stocks</button>
+                    <button type="button" class="dir-pill ${scanMode==='scan_crypto'?'active':''}" id="scan-scan_crypto-${s.id}" onclick="setScanMode('${s.id}','scan_crypto')">Top Crypto</button>
+                    <button type="button" class="dir-pill ${scanMode==='scan_all'?'active':''}" id="scan-scan_all-${s.id}" onclick="setScanMode('${s.id}','scan_all')">All Markets</button>
+                  </div>
+                  <div id="scan-hint-${s.id}" style="font-size:0.7rem;color:#555;text-align:right;">${scanMode==='single'?'Uses the symbol below':scanMode==='scan_stocks'?'50 top US stocks':'scan_crypto'===scanMode?'20 top crypto':'50 stocks + 20 crypto'}</div>
+                </div>
+                <input type="hidden" id="scanmode-${s.id}" value="${scanMode}" />
+              </div>
+              <!-- Symbol (hidden in scan mode) -->
+              <div class="auto-settings-row" id="sym-row-${s.id}" style="display:${isScan?'none':'flex'}">
                 <span>Symbol</span>
                 <input class="auto-input wide" id="sym-${s.id}" type="text" value="${symbol}" placeholder="e.g. SPY" />
               </div>
@@ -486,12 +503,14 @@
       const interval = document.getElementById('int-' + systemId)?.value || '1h';
       const broker = document.getElementById('brk-' + systemId)?.value || 'paper';
       const botTradeDir = document.getElementById('dir-' + systemId)?.value || 'both';
+      const botScanMode = document.getElementById('scanmode-' + systemId)?.value || 'single';
       await sbClient.from('systems').update({
         bot_symbol: symbol,
         bot_dollar_amount: dollarAmount,
         bot_interval: interval,
         broker,
         bot_trade_direction: botTradeDir,
+        bot_scan_mode: botScanMode,
       }).eq('id', systemId);
       // Update header broker tag
       refreshBrokerTag(systemId, broker);
@@ -518,6 +537,21 @@
       // Show/hide warning
       const warn = document.getElementById('broker-warn-' + systemId);
       if (warn) warn.style.display = broker === 'tastytrade' ? 'flex' : 'none';
+    }
+
+    function setScanMode(systemId, mode) {
+      document.getElementById('scanmode-' + systemId).value = mode;
+      ['single','scan_stocks','scan_crypto','scan_all'].forEach(m => {
+        const btn = document.getElementById('scan-' + m + '-' + systemId);
+        if (btn) btn.classList.toggle('active', m === mode);
+      });
+      // Show/hide symbol row
+      const symRow = document.getElementById('sym-row-' + systemId);
+      if (symRow) symRow.style.display = mode === 'single' ? 'flex' : 'none';
+      // Update hint
+      const hints = { single: 'Uses the symbol below', scan_stocks: '50 top US stocks', scan_crypto: '20 top crypto', scan_all: '50 stocks + 20 crypto' };
+      const hint = document.getElementById('scan-hint-' + systemId);
+      if (hint) hint.textContent = hints[mode] || '';
     }
 
     function setBotDir(systemId, direction) {
@@ -553,19 +587,20 @@
           body: JSON.stringify({ system_id: systemId, user_id: currentUserId })
         });
         const json = await res.json();
-        const r = json.results?.[0];
-        if (!r) { if (resultEl) { resultEl.textContent = 'No result returned'; resultEl.className = 'run-result'; } return; }
-        if (r.status === 'no_signal') {
-          if (resultEl) { resultEl.textContent = `No signal — ${r.reason}`; resultEl.className = 'run-result'; }
-        } else if (r.status === 'filled' || r.signal) {
-          if (resultEl) { resultEl.textContent = `✓ ${r.signal?.toUpperCase()} signal! ${r.symbol} @ $${r.price?.toFixed(2)} · qty ${r.quantity}`; resultEl.className = 'run-result green'; }
+        const allResults = json.results || [];
+        if (!allResults.length) { if (resultEl) { resultEl.textContent = 'No result returned'; resultEl.className = 'run-result'; } return; }
+        // Summarize
+        const signals = allResults.filter((r) => r.signal && r.signal !== 'none' && (r.status === 'filled' || r.status === 'paper'));
+        const errors  = allResults.filter((r) => r.status === 'error');
+        if (signals.length > 0) {
+          const summary = signals.map((r) => `${r.signal?.toUpperCase()} ${r.symbol} @$${Number(r.price).toFixed(2)}`).join(' · ');
+          if (resultEl) { resultEl.textContent = `✓ ${signals.length} signal${signals.length>1?'s':''}: ${summary}`; resultEl.className = 'run-result green'; }
           setTimeout(() => loadBots(), 1500);
-        } else if (r.status === 'skipped') {
-          if (resultEl) { resultEl.textContent = `Skipped — ${r.reason}`; resultEl.className = 'run-result'; }
-        } else if (r.status === 'error' || r.broker_error) {
-          if (resultEl) { resultEl.textContent = `Error: ${r.error || r.broker_error}`; resultEl.className = 'run-result red'; }
+        } else if (errors.length > 0) {
+          if (resultEl) { resultEl.textContent = `Error: ${errors[0].error}`; resultEl.className = 'run-result red'; }
         } else {
-          if (resultEl) { resultEl.textContent = JSON.stringify(r); resultEl.className = 'run-result'; }
+          const scanned = allResults.length;
+          if (resultEl) { resultEl.textContent = `Scanned ${scanned} symbol${scanned>1?'s':''} — no signals this bar`; resultEl.className = 'run-result'; }
         }
       } catch(e) {
         if (resultEl) { resultEl.textContent = 'Error: ' + e.message; resultEl.className = 'run-result red'; }

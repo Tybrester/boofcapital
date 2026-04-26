@@ -370,81 +370,46 @@ Deno.serve(async (req) => {
       });
     }
 
-    const results: object[] = [];
+    // ── Symbol lists for scan mode ──────────────────────────────────────────
+    const SCAN_STOCKS = [
+      'SPY','QQQ','AAPL','MSFT','NVDA','TSLA','AMZN','GOOGL','META','NFLX',
+      'AMD','INTC','AVGO','ORCL','CRM','ADBE','PYPL','SQ','SHOP','UBER',
+      'DIS','BA','JPM','GS','BAC','WFC','V','MA','BRK-B','UNH',
+      'XOM','CVX','PFE','JNJ','KO','PEP','WMT','TGT','COST','HD',
+      'T','VZ','CSCO','IBM','MU','QCOM','TXN','ARM','PLTR','COIN',
+    ];
+    const SCAN_CRYPTO = [
+      'BTC-USD','ETH-USD','SOL-USD','BNB-USD','XRP-USD','ADA-USD','AVAX-USD',
+      'DOGE-USD','DOT-USD','MATIC-USD','LINK-USD','UNI-USD','LTC-USD',
+      'ATOM-USD','ICP-USD','FIL-USD','APT-USD','ARB-USD','OP-USD','INJ-USD',
+    ];
+    const SCAN_ALL = [...SCAN_STOCKS, ...SCAN_CRYPTO];
 
-    for (const system of systems) {
-      const settings: BotSettings = {
-        atrLength:     system.bot_atr_length     ?? 10,
-        atrMultiplier: system.bot_atr_multiplier ?? 3.0,
-        emaLength:     system.bot_ema_length     ?? 50,
-        adxLength:     system.bot_adx_length     ?? 14,
-        adxThreshold:  system.bot_adx_threshold  ?? 20,
-        symbol:        system.bot_symbol         ?? 'SPY',
-        dollarAmount:  system.bot_dollar_amount  ?? 500,
-        interval:      system.bot_interval       ?? '1h',
-        tradeDirection: system.bot_trade_direction ?? system.trade_direction ?? 'both',
-      };
-
-      console.log(`[AutoBot] Running system "${system.name}" | ${settings.symbol} ${settings.interval}`);
-
+    // ── Per-symbol processing helper ─────────────────────────────────────────
+    async function processSymbol(system: Record<string,unknown>, sym: string, settings: BotSettings): Promise<object> {
       try {
-        const candles = await fetchCandles(settings.symbol, settings.interval, 150);
-        if (candles.length < 60) {
-          results.push({ system_id: system.id, status: 'skipped', reason: 'Not enough candle data' });
-          continue;
-        }
+        const candles = await fetchCandles(sym, settings.interval, 150);
+        if (candles.length < 60) return { system_id: system.id, symbol: sym, status: 'skipped', reason: 'Not enough candle data' };
 
-        const { signal, price, trend, ema, adx, reason } = generateSignal(candles, settings);
-        console.log(`[AutoBot] Signal: ${signal} | ${reason}`);
+        const overrideSettings = { ...settings, symbol: sym };
+        const { signal, price, trend, ema, adx, reason } = generateSignal(candles, overrideSettings);
+        console.log(`[AutoBot] ${sym} → ${signal} | ${reason}`);
 
-        // Direction filter
-        if (signal === 'buy'  && settings.tradeDirection === 'short') {
-          results.push({ system_id: system.id, status: 'skipped', reason: 'Direction filter: short only' });
-          continue;
-        }
-        if (signal === 'sell' && settings.tradeDirection === 'long') {
-          results.push({ system_id: system.id, status: 'skipped', reason: 'Direction filter: long only' });
-          continue;
-        }
+        if (signal === 'buy'  && settings.tradeDirection === 'short') return { system_id: system.id, symbol: sym, status: 'skipped', reason: 'Direction: short only' };
+        if (signal === 'sell' && settings.tradeDirection === 'long')  return { system_id: system.id, symbol: sym, status: 'skipped', reason: 'Direction: long only' };
 
         if (signal === 'none') {
-          // Log a no-signal check
-          await supabase.from('bot_logs').insert({
-            system_id: system.id,
-            user_id: system.user_id,
-            symbol: settings.symbol,
-            signal: 'none',
-            price,
-            trend,
-            ema,
-            adx,
-            reason,
-            created_at: new Date().toISOString(),
-          });
-          results.push({ system_id: system.id, status: 'no_signal', reason });
-          continue;
+          await supabase.from('bot_logs').insert({ system_id: system.id, user_id: system.user_id, symbol: sym, signal: 'none', price, trend, ema, adx, reason, created_at: new Date().toISOString() });
+          return { system_id: system.id, symbol: sym, status: 'no_signal', reason };
         }
 
-        // Check for duplicate signal within last 2 bars (prevent double-fire)
+        // Duplicate check per symbol
         const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-        const { data: recentTrades } = await supabase
-          .from('trades')
-          .select('id, action, created_at')
-          .eq('system_id', system.id)
-          .eq('user_id', system.user_id)
-          .gte('created_at', twoHoursAgo)
-          .order('created_at', { ascending: false })
-          .limit(1);
-
-        if (recentTrades && recentTrades.length > 0) {
-          const lastAction = recentTrades[0].action;
-          if (lastAction === signal) {
-            results.push({ system_id: system.id, status: 'skipped', reason: `Duplicate ${signal} within 2h` });
-            continue;
-          }
+        const { data: recentTrades } = await supabase.from('trades').select('action').eq('system_id', system.id as string).eq('user_id', system.user_id as string).eq('symbol', sym).gte('created_at', twoHoursAgo).order('created_at', { ascending: false }).limit(1);
+        if (recentTrades && recentTrades.length > 0 && recentTrades[0].action === signal) {
+          return { system_id: system.id, symbol: sym, status: 'skipped', reason: `Duplicate ${signal} within 2h` };
         }
 
-        // Place trade
         let orderId: string | undefined;
         let quantity = Math.max(1, Math.round(settings.dollarAmount / price));
         let tradeStatus = 'filled';
@@ -452,9 +417,9 @@ Deno.serve(async (req) => {
 
         if (system.broker === 'tastytrade') {
           try {
-            const result = await placeTastyOrder(supabase, system.user_id, signal, settings.symbol, price, settings.dollarAmount);
-            orderId = result.orderId;
-            quantity = result.quantity;
+            const r = await placeTastyOrder(supabase, system.user_id as string, signal, sym, price, settings.dollarAmount);
+            orderId = r.orderId;
+            quantity = r.quantity;
           } catch (e) {
             brokerError = String(e);
             tradeStatus = 'failed';
@@ -462,51 +427,67 @@ Deno.serve(async (req) => {
           }
         }
 
-        // Record trade
         const { data: trade } = await supabase.from('trades').insert({
-          user_id: system.user_id,
-          system_id: system.id,
-          symbol: settings.symbol,
-          action: signal,
-          quantity,
-          price,
-          order_type: 'market',
-          broker: system.broker || 'paper',
-          status: tradeStatus,
-          broker_order_id: orderId || null,
-          broker_error: brokerError || null,
+          user_id: system.user_id, system_id: system.id, symbol: sym, action: signal,
+          quantity, price, order_type: 'market', broker: system.broker || 'paper',
+          status: tradeStatus, broker_order_id: orderId || null, broker_error: brokerError || null,
           filled_at: tradeStatus === 'filled' ? new Date().toISOString() : null,
-          payload: { source: 'auto-bot', reason, trend, ema: ema?.toFixed(2), adx: adx?.toFixed(1) },
+          payload: { source: 'auto-bot', scan_mode: system.bot_scan_mode, reason, trend, ema: ema?.toFixed(2), adx: adx?.toFixed(1) },
           created_at: new Date().toISOString(),
         }).select().single();
 
-        // Log signal
-        await supabase.from('bot_logs').insert({
-          system_id: system.id,
-          user_id: system.user_id,
-          symbol: settings.symbol,
-          signal,
-          price,
-          trend,
-          ema,
-          adx,
-          reason,
-          trade_id: trade?.id || null,
-          created_at: new Date().toISOString(),
-        });
+        await supabase.from('bot_logs').insert({ system_id: system.id, user_id: system.user_id, symbol: sym, signal, price, trend, ema, adx, reason, trade_id: trade?.id || null, created_at: new Date().toISOString() });
 
-        results.push({
-          system_id: system.id,
-          status: tradeStatus,
-          signal,
-          symbol: settings.symbol,
-          price,
-          quantity,
-          order_id: orderId,
-          reason,
-          broker_error: brokerError,
-        });
+        return { system_id: system.id, status: tradeStatus, signal, symbol: sym, price, quantity, order_id: orderId, reason, broker_error: brokerError };
+      } catch (err) {
+        return { system_id: system.id, symbol: sym, status: 'error', error: String(err) };
+      }
+    }
 
+    // ── Main loop ────────────────────────────────────────────────────────────
+    const results: object[] = [];
+
+    for (const system of systems) {
+      const settings: BotSettings = {
+        atrLength:      system.bot_atr_length     ?? 10,
+        atrMultiplier:  system.bot_atr_multiplier ?? 3.0,
+        emaLength:      system.bot_ema_length     ?? 50,
+        adxLength:      system.bot_adx_length     ?? 14,
+        adxThreshold:   system.bot_adx_threshold  ?? 20,
+        symbol:         system.bot_symbol         ?? 'SPY',
+        dollarAmount:   system.bot_dollar_amount  ?? 500,
+        interval:       system.bot_interval       ?? '1h',
+        tradeDirection: system.bot_trade_direction ?? system.trade_direction ?? 'both',
+      };
+
+      const scanMode: string = (system.bot_scan_mode as string) || 'single';
+      console.log(`[AutoBot] System "${system.name}" | mode=${scanMode} | ${settings.interval}`);
+
+      try {
+        if (scanMode === 'scan_stocks') {
+          // Run all stocks in parallel batches of 10
+          for (let i = 0; i < SCAN_STOCKS.length; i += 10) {
+            const batch = SCAN_STOCKS.slice(i, i + 10);
+            const batchResults = await Promise.all(batch.map(sym => processSymbol(system, sym, settings)));
+            results.push(...batchResults);
+          }
+        } else if (scanMode === 'scan_crypto') {
+          for (let i = 0; i < SCAN_CRYPTO.length; i += 10) {
+            const batch = SCAN_CRYPTO.slice(i, i + 10);
+            const batchResults = await Promise.all(batch.map(sym => processSymbol(system, sym, settings)));
+            results.push(...batchResults);
+          }
+        } else if (scanMode === 'scan_all') {
+          for (let i = 0; i < SCAN_ALL.length; i += 10) {
+            const batch = SCAN_ALL.slice(i, i + 10);
+            const batchResults = await Promise.all(batch.map(sym => processSymbol(system, sym, settings)));
+            results.push(...batchResults);
+          }
+        } else {
+          // Single symbol mode
+          const r = await processSymbol(system, settings.symbol, settings);
+          results.push(r);
+        }
       } catch (err) {
         console.error(`[AutoBot] Error on system ${system.id}:`, err);
         results.push({ system_id: system.id, status: 'error', error: String(err) });
