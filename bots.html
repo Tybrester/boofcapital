@@ -458,7 +458,7 @@
               </div>
               <div class="auto-settings-row"><span>Stop Loss</span>
                 <div style="display:flex;align-items:center;gap:6px;">
-                  <input class="auto-input" id="osl-${b.id}" type="number" value="${b.stop_loss_pct??20}" min="5" max="100" style="width:70px;"/>
+                  <input class="auto-input" id="osl-${b.id}" type="number" value="-${b.stop_loss_pct??20}" max="-5" style="width:70px;"/>
                   <span style="font-size:0.78rem;color:#555;">% loss</span>
                 </div>
               </div>
@@ -518,7 +518,7 @@
       const manualStrike = parseFloat(document.getElementById('ostrike-' + botId)?.value) || null;
       const scanMode = document.getElementById('oscan-' + botId)?.value || 'single';
       const tp = parseFloat(document.getElementById('otp-' + botId)?.value) || 100;
-      const sl = parseFloat(document.getElementById('osl-' + botId)?.value) || 20;
+      const sl = Math.abs(parseFloat(document.getElementById('osl-' + botId)?.value) || 20);
       await sbClient.from('options_bots').update({ bot_symbol: sym, bot_dollar_amount: dol, bot_interval: int, bot_expiry_type: expiry, bot_trade_direction: dir, bot_strike_mode: strikeMode, bot_manual_strike: strikeMode === 'manual' ? manualStrike : null, bot_scan_mode: scanMode, take_profit_pct: tp, stop_loss_pct: sl }).eq('id', botId);
       const r = document.getElementById('opt-run-result-' + botId);
       if (r) { r.textContent = '✓ Settings saved'; r.className = 'run-result green'; setTimeout(() => { r.textContent=''; r.className='run-result'; }, 2000); }
