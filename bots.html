@@ -663,6 +663,7 @@
     }
 
     async function toggleOptionsBot(botId, on) {
+      if (on) await saveOptionsSettings(botId);
       await sbClient.from('options_bots').update({ enabled: on, auto_submit: on }).eq('id', botId);
       const badge = document.getElementById('opt-status-badge-' + botId);
       const detail = document.getElementById('opt-status-text-' + botId);
@@ -1041,6 +1042,7 @@
     }
 
     async function toggleBot(systemId, on) {
+      if (on) await saveAutoSettings(systemId);
       await sbClient.from('systems').update({ enabled: on, auto_submit: on }).eq('id', systemId);
       refreshStatusBadge(systemId, on);
     }
