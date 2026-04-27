@@ -225,12 +225,8 @@ function getExpirationDate(type: string): string {
     // Today (market day)
     return now.toISOString().split('T')[0];
   } else if (type === 'weekly') {
-    // 7 days from now (consistent weekly expiration), with fallback to next available day
+    // 7 days from now (consistent weekly expiration)
     const sevenDays = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-    // Check if it's a weekend and push to Monday if needed
-    const dayOfWeek = sevenDays.getDay();
-    if (dayOfWeek === 0) sevenDays.setDate(sevenDays.getDate() + 1); // Sunday -> Monday
-    if (dayOfWeek === 6) sevenDays.setDate(sevenDays.getDate() + 2); // Saturday -> Monday
     return sevenDays.toISOString().split('T')[0];
   } else {
     // Monthly — third Friday of next month
