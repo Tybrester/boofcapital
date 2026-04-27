@@ -146,10 +146,11 @@
       color: var(--red);
       text-transform: uppercase;
     }
-    .time-ago { color: #555; font-size: 0.75rem; white-space: nowrap; }
+    .time-ago { color: #888; font-size: 0.75rem; white-space: nowrap; }
+    .time-ago span { color: #aaa; }
     .option-details { 
       font-size: 0.7rem; 
-      color: #777; 
+      color: #999; 
       display: block;
       margin-top: 4px;
     }
@@ -993,9 +994,9 @@
             <td class="trade-${t.action === 'buy' ? 'buy' : 'sell'}">${t.action.toUpperCase()}</td>
             <td>${t.quantity}</td>
             <td>$${Number(t.price).toFixed(2)}</td>
-            <td class="${pnlClass}">${pnlText}<span style="font-size:0.75rem;opacity:0.7;">${pnlPercentText}</span></td>
+            <td class="${pnlClass}">${pnlText}<span style="font-size:0.75rem;color:#bbb;">${pnlPercentText}</span></td>
             <td>${statusBadge}</td>
-            <td class="time-ago">${timeAgo}<br><span style="font-size:0.7rem;opacity:0.6;">${new Date(t.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span></td>
+            <td class="time-ago">${timeAgo}<br><span style="font-size:0.7rem;color:#aaa;">${new Date(t.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span></td>
           </tr>`;
         }).join('');
         
