@@ -404,7 +404,7 @@
     }
 
     async function toggleSystemField(id, field, value) {
-      await sbClient.from('systems').update({ [field]: value }).eq('id', id);
+      await sbClient.from('stock_bots').update({ [field]: value }).eq('id', id);
     }
 
     async function refreshOptBalance(botId) {
@@ -717,7 +717,7 @@
 
     async function deleteBot(id, name) {
       if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
-      await sbClient.from('systems').delete().eq('id', id);
+      await sbClient.from('stock_bots').delete().eq('id', id);
       document.getElementById('botcard-' + id)?.remove();
     }
 
@@ -733,7 +733,7 @@
 
     async function createStockBot(name, signal = 'supertrend') {
       console.log(`[CreateStockBot] Creating stock bot: ${name}`);
-      const { data, error } = await sbClient.from('systems').insert({
+      const { data, error } = await sbClient.from('stock_bots').insert({
         user_id: currentUserId,
         name,
         enabled: false,
@@ -772,13 +772,13 @@
     async function loadBots() {
       const container = document.getElementById('bots-container');
 
-      const { data: systems, error } = await sbClient
-        .from('systems')
+      const { data: stockBots, error } = await sbClient
+        .from('stock_bots')
         .select('*')
         .eq('user_id', currentUserId)
         .order('created_at', { ascending: true });
 
-      if (error || !systems || systems.length === 0) {
+      if (error || !stockBots || stockBots.length === 0) {
         container.innerHTML = `<div class="empty-state">
           <div>No bots yet.</div>
           <div style="margin-top:8px;font-size:0.82rem;">Create a System first, then connect it to a TradingView alert.</div>
@@ -792,7 +792,7 @@
       const grid = document.createElement('div');
       grid.className = 'bots-grid';
 
-      systems.forEach(s => {
+      stockBots.forEach(s => {
         const isRunning = s.enabled && s.auto_submit;
         const brokerLabel = s.broker === 'tastytrade' ? 'Tastytrade' : 'Paper';
         const brokerClass = s.broker === 'tastytrade' ? 'bot-broker-tastytrade' : 'bot-broker-paper';
@@ -960,7 +960,7 @@
       const botScanMode = document.getElementById('scanmode-' + systemId)?.value || 'single';
       const botSignal = document.getElementById('sig-' + systemId)?.value || 'supertrend';
       console.log(`[SaveAuto] System ${systemId}: sym=${symbol}, int=${interval}, dir=${botTradeDir}, signal=${botSignal}, scan=${botScanMode}, $=${dollarAmount}`);
-      const { error } = await sbClient.from('systems').update({
+      const { error } = await sbClient.from('stock_bots').update({
         bot_symbol: symbol,
         bot_dollar_amount: dollarAmount,
         bot_interval: interval,
@@ -1046,15 +1046,15 @@
 
     async function resetPaperBalance(systemId) {
       if (!confirm('Reset paper balance back to $100,000?')) return;
-      await sbClient.from('systems').update({ paper_balance: 100000, paper_balance_start: 100000 }).eq('id', systemId);
+      await sbClient.from('stock_bots').update({ paper_balance: 100000, paper_balance_start: 100000 }).eq('id', systemId);
       const balEl = document.getElementById('paper-bal-' + systemId);
       if (balEl) balEl.textContent = '$100,000.00';
     }
 
     async function toggleBot(systemId, on) {
-      console.log(`[ToggleAuto] System ${systemId} → ${on ? 'ON' : 'OFF'}`);
+      console.log(`[ToggleAuto] Bot ${systemId} → ${on ? 'ON' : 'OFF'}`);
       if (on) { console.log('[ToggleAuto] Auto-saving before enable...'); await saveAutoSettings(systemId); }
-      await sbClient.from('systems').update({ enabled: on, auto_submit: on }).eq('id', systemId);
+      await sbClient.from('stock_bots').update({ enabled: on, auto_submit: on }).eq('id', systemId);
       refreshStatusBadge(systemId, on);
     }
 
