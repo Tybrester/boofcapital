@@ -627,10 +627,14 @@
     function promptNewStockBot() {
       const name = prompt('Name your stock bot:');
       if (!name || !name.trim()) return;
-      createStockBot(name.trim());
+      const signalChoice = confirm(
+        'Choose a signal strategy:\n\nOK → Adaptive SuperTrend + EMA50 + ADX(14)\nCancel → RSI + EMA + MACD + Bollinger Bands + ATR'
+      );
+      const signal = signalChoice ? 'supertrend' : 'rsi_macd';
+      createStockBot(name.trim(), signal);
     }
 
-    async function createStockBot(name) {
+    async function createStockBot(name, signal = 'supertrend') {
       const { error } = await sbClient.from('systems').insert({
         user_id: currentUserId,
         name,
@@ -642,6 +646,7 @@
         bot_interval: '1h',
         bot_trade_direction: 'both',
         bot_scan_mode: 'single',
+        bot_signal: signal,
         paper_balance: 150000,
         paper_balance_start: 150000,
       });
@@ -813,13 +818,17 @@
               <div id="broker-warn-${s.id}" style="font-size:0.72rem;color:#ff7043;display:${s.broker&&s.broker!=='paper'?'flex':'none'};align-items:center;gap:6px;background:rgba(255,112,67,0.08);border:1px solid rgba(255,112,67,0.2);border-radius:6px;padding:8px 10px;">
                 <span>Live trading enabled — real orders will be placed on ${s.broker==='alpaca'?'Alpaca':'Tastytrade'}</span>
               </div>
+              <div class="auto-settings-row">
+                <span>Signal</span>
+                <select class="auto-input" id="sig-${s.id}" style="width:220px;">
+                  <option value="supertrend" ${(s.bot_signal||'supertrend')==='supertrend'?'selected':''}>Adaptive SuperTrend + EMA50 + ADX(14)</option>
+                  <option value="rsi_macd" ${s.bot_signal==='rsi_macd'?'selected':''}>RSI + EMA + MACD + Bollinger Bands + ATR</option>
+                </select>
+              </div>
               <div style="display:flex;gap:8px;align-items:center;">
                 <button class="save-btn" onclick="saveAutoSettings('${s.id}')">Save Settings</button>
               </div>
               <div class="run-result" id="run-result-${s.id}"></div>
-              <div style="font-size:0.72rem;color:#555;border-top:1px solid #1a1a1a;padding-top:10px;">
-                Indicator: <strong style="color:#82b1ff;">Adaptive SuperTrend + EMA50 + ADX(14)</strong> · Signals on candle close
-              </div>
             </div>
             </div>
           </div>
@@ -846,6 +855,7 @@
       const broker = document.getElementById('brk-' + systemId)?.value || 'paper';
       const botTradeDir = document.getElementById('dir-' + systemId)?.value || 'both';
       const botScanMode = document.getElementById('scanmode-' + systemId)?.value || 'single';
+      const botSignal = document.getElementById('sig-' + systemId)?.value || 'supertrend';
       await sbClient.from('systems').update({
         bot_symbol: symbol,
         bot_dollar_amount: dollarAmount,
@@ -853,6 +863,7 @@
         broker,
         bot_trade_direction: botTradeDir,
         bot_scan_mode: botScanMode,
+        bot_signal: botSignal,
       }).eq('id', systemId);
       // Update header broker tag
       refreshBrokerTag(systemId, broker);

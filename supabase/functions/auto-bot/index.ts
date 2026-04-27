@@ -130,6 +130,97 @@ function calcDMI(
   return { plusDI, minusDI, adx };
 }
 
+function calcRSI(closes: number[], period: number): number[] {
+  const rsi: number[] = new Array(closes.length).fill(NaN);
+  if (closes.length < period + 1) return rsi;
+  let gains = 0, losses = 0;
+  for (let i = 1; i <= period; i++) {
+    const diff = closes[i] - closes[i - 1];
+    if (diff > 0) gains += diff; else losses -= diff;
+  }
+  let avgGain = gains / period;
+  let avgLoss = losses / period;
+  rsi[period] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+  for (let i = period + 1; i < closes.length; i++) {
+    const diff = closes[i] - closes[i - 1];
+    const g = diff > 0 ? diff : 0;
+    const l = diff < 0 ? -diff : 0;
+    avgGain = (avgGain * (period - 1) + g) / period;
+    avgLoss = (avgLoss * (period - 1) + l) / period;
+    rsi[i] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+  }
+  return rsi;
+}
+
+function calcMACD(closes: number[], fast: number, slow: number, signal: number): { macdLine: number[], signalLine: number[], hist: number[] } {
+  const emaFast = calcEMA(closes, fast);
+  const emaSlow = calcEMA(closes, slow);
+  const macdLine = closes.map((_, i) => (isNaN(emaFast[i]) || isNaN(emaSlow[i])) ? NaN : emaFast[i] - emaSlow[i]);
+  const validStart = macdLine.findIndex(v => !isNaN(v));
+  const signalLine: number[] = new Array(closes.length).fill(NaN);
+  if (validStart >= 0) {
+    const validMacd = macdLine.slice(validStart);
+    const emaSignal = calcEMA(validMacd, signal);
+    for (let i = 0; i < emaSignal.length; i++) signalLine[validStart + i] = emaSignal[i];
+  }
+  const hist = macdLine.map((v, i) => (isNaN(v) || isNaN(signalLine[i])) ? NaN : v - signalLine[i]);
+  return { macdLine, signalLine, hist };
+}
+
+function calcBollinger(closes: number[], period: number, stdDev: number): { upper: number[], mid: number[], lower: number[] } {
+  const upper: number[] = new Array(closes.length).fill(NaN);
+  const mid: number[]   = new Array(closes.length).fill(NaN);
+  const lower: number[] = new Array(closes.length).fill(NaN);
+  for (let i = period - 1; i < closes.length; i++) {
+    const slice = closes.slice(i - period + 1, i + 1);
+    const mean = slice.reduce((a, b) => a + b, 0) / period;
+    const variance = slice.reduce((a, b) => a + (b - mean) ** 2, 0) / period;
+    const sd = Math.sqrt(variance);
+    mid[i]   = mean;
+    upper[i] = mean + stdDev * sd;
+    lower[i] = mean - stdDev * sd;
+  }
+  return { upper, mid, lower };
+}
+
+function generateSignalRSIMACD(candles: Candle[]): SignalResult {
+  const closes = candles.map(c => c.close);
+  const n = closes.length;
+  const i = n - 2; // last completed bar
+
+  const rsi  = calcRSI(closes, 14);
+  const ema50 = calcEMA(closes, 50);
+  const { hist } = calcMACD(closes, 12, 26, 9);
+
+  const curRSI   = rsi[i];
+  const curEma   = ema50[i];
+  const curHist  = hist[i];
+  const curClose = closes[i];
+
+  let inLong = false;
+  // Replay state to determine current position (mirror Pine logic)
+  for (let j = 50; j <= i; j++) {
+    const r = rsi[j], h = hist[j], e = ema50[j], c = closes[j];
+    if (isNaN(r) || isNaN(h) || isNaN(e)) continue;
+    const buyCond  = (r < 30 || h > 0) && c > e;
+    const sellCond = (r > 70 || h < 0) && c < e;
+    if (!inLong && buyCond)  inLong = true;
+    if (inLong  && sellCond) inLong = false;
+  }
+
+  // Check signal on bar i (what just closed)
+  const buyCond  = (curRSI < 30 || curHist > 0) && curClose > curEma;
+  const sellCond = (curRSI > 70 || curHist < 0) && curClose < curEma;
+
+  let signal: 'buy' | 'sell' | 'none' = 'none';
+  let reason = `rsi=${curRSI?.toFixed(1)}, macd_hist=${curHist?.toFixed(4)}, ema=${curEma?.toFixed(2)}, close=${curClose?.toFixed(2)}`;
+
+  if (!inLong && buyCond)  { signal = 'buy';  reason = `RSI+MACD BUY. ${reason}`; }
+  if (inLong  && sellCond) { signal = 'sell'; reason = `RSI+MACD SELL. ${reason}`; }
+
+  return { signal, price: curClose, trend: buyCond ? 1 : -1, ema: curEma, adx: curRSI, reason };
+}
+
 // ─────────────────────────────────────────────
 // FETCH CANDLES  (Polygon.io)
 // ─────────────────────────────────────────────
@@ -469,7 +560,10 @@ Deno.serve(async (req) => {
         if (candles.length < 60) return { system_id: system.id, symbol: sym, status: 'skipped', reason: 'Not enough candle data' };
 
         const overrideSettings = { ...settings, symbol: sym };
-        const { signal, price, trend, ema, adx, reason } = generateSignal(candles, overrideSettings);
+        const botSignal = (system.bot_signal as string) || 'supertrend';
+        const { signal, price, trend, ema, adx, reason } = botSignal === 'rsi_macd'
+          ? generateSignalRSIMACD(candles)
+          : generateSignal(candles, overrideSettings);
         console.log(`[AutoBot] ${sym} → ${signal} | ${reason}`);
 
         if (signal === 'buy'  && settings.tradeDirection === 'short') return { system_id: system.id, symbol: sym, status: 'skipped', reason: 'Direction: short only' };
