@@ -237,6 +237,23 @@ function getExpirationDate(type: string): string {
   }
 }
 
+// Find nearest valid expiration: tries target, then -1 day, then +1 day, then -2 day, then +2 day
+function findValidExpiration(targetDate: string): string {
+  const target = new Date(targetDate);
+  const candidates = [
+    target,
+    new Date(target.getTime() - 1 * 24 * 60 * 60 * 1000), // -1 day
+    new Date(target.getTime() + 1 * 24 * 60 * 60 * 1000), // +1 day
+    new Date(target.getTime() - 2 * 24 * 60 * 60 * 1000), // -2 days
+    new Date(target.getTime() + 2 * 24 * 60 * 60 * 1000), // +2 days
+  ];
+  for (const d of candidates) {
+    const day = d.getDay();
+    if (day !== 0 && day !== 6) return d.toISOString().split('T')[0]; // Skip weekends
+  }
+  return targetDate; // Fallback to original
+}
+
 function pickStrike(spotPrice: number, otmStrikes: number, optionType: 'call' | 'put', strikeInterval = 5): number {
   // Round spot to nearest strike interval
   const atm = Math.round(spotPrice / strikeInterval) * strikeInterval;
@@ -435,7 +452,8 @@ Deno.serve(async (req) => {
               }
 
               const optionType: 'call' | 'put' = signal === 'buy' ? 'call' : 'put';
-              const expirationDate = getExpirationDate(settings.expiryType);
+              const targetExpiration = getExpirationDate(settings.expiryType);
+              const expirationDate = findValidExpiration(targetExpiration);
               const expDate = new Date(expirationDate);
               const T = Math.max(1 / 365, (expDate.getTime() - Date.now()) / (365 * 24 * 60 * 60 * 1000));
               const strikeInterval = price > 500 ? 5 : price > 100 ? 5 : price > 50 ? 2.5 : 1;
