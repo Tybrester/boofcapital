@@ -764,7 +764,7 @@
         .from('systems')
         .select('*')
         .eq('user_id', currentUserId)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: true });
 
       if (error || !systems || systems.length === 0) {
         container.innerHTML = `<div class="empty-state">
