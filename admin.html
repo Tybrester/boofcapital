@@ -125,22 +125,10 @@
         <div class="page-title">Admin Panel</div>
         <div class="page-sub">Site overview and user management</div>
 
-        <div class="stats-row">
+        <div class="stats-row" style="max-width:220px;">
           <div class="stat-card">
             <div class="label">Total Users</div>
             <div class="value green" id="stat-users">—</div>
-          </div>
-          <div class="stat-card">
-            <div class="label">Total Systems</div>
-            <div class="value" id="stat-systems">—</div>
-          </div>
-          <div class="stat-card">
-            <div class="label">Total Trades</div>
-            <div class="value" id="stat-trades">—</div>
-          </div>
-          <div class="stat-card">
-            <div class="label">Paper Accounts</div>
-            <div class="value" id="stat-paper">—</div>
           </div>
         </div>
 
@@ -187,16 +175,8 @@
     }
 
     async function loadStats() {
-      const [{ count: userCount }, { count: sysCount }, { count: tradeCount }, { count: paperCount }] = await Promise.all([
-        sbClient.from('paper_accounts').select('*', { count: 'exact', head: true }),
-        sbClient.from('systems').select('*', { count: 'exact', head: true }),
-        sbClient.from('trades').select('*', { count: 'exact', head: true }),
-        sbClient.from('paper_accounts').select('*', { count: 'exact', head: true }),
-      ]);
-      document.getElementById('stat-users').textContent = paperCount ?? '—';
-      document.getElementById('stat-systems').textContent = sysCount ?? '—';
-      document.getElementById('stat-trades').textContent = tradeCount ?? '—';
-      document.getElementById('stat-paper').textContent = paperCount ?? '—';
+      const { count } = await sbClient.from('paper_accounts').select('*', { count: 'exact', head: true });
+      document.getElementById('stat-users').textContent = count ?? '—';
     }
 
     async function loadUsers() {
