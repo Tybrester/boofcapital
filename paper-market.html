@@ -192,12 +192,8 @@
           <!-- Trade panel -->
           <div class="trade-panel">
 
-            <!-- System / balance -->
+            <!-- Balance -->
             <div class="panel-section">
-              <div class="panel-title">Account</div>
-              <select class="sys-select" id="sys-select" onchange="onSystemChange()">
-                <option value="">— Select System —</option>
-              </select>
               <div class="balance-display">
                 <div class="balance-label">Paper Balance</div>
                 <div class="balance-val" id="bal-val">—</div>
@@ -408,17 +404,7 @@
     async function loadSystems() {
       const { data } = await sbClient.from('systems').select('id, name, paper_balance, paper_balance_start').eq('user_id', currentUser.id).order('created_at');
       systems = data || [];
-      const sel = document.getElementById('sys-select');
-      sel.innerHTML = '<option value="">— Select System —</option>' +
-        systems.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
-      if (systems.length === 1) { sel.value = systems[0].id; onSystemChange(); }
-    }
-
-    function onSystemChange() {
-      const id = document.getElementById('sys-select').value;
-      selectedSystem = systems.find(s => s.id === id) || null;
-      renderBalance();
-      loadHistory();
+      if (systems.length > 0) { selectedSystem = systems[0]; renderBalance(); loadHistory(); }
     }
 
     function renderBalance() {
