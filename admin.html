@@ -167,7 +167,7 @@
       if (!session) { window.location.href = 'signin.html'; return; }
 
       const user = session.user;
-      if (user.user_metadata?.role !== 'admin') {
+      if (user.id !== 'd0bb84ba-f968-446c-9792-9bcff8849e37') {
         window.location.href = 'dashboard.html';
         return;
       }

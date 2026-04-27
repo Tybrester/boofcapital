@@ -731,7 +731,7 @@
       currentUser = session.user;
       document.getElementById('user-email').textContent = currentUser.email;
       // Show admin link if admin
-      if (currentUser.user_metadata?.role === 'admin') {
+      if (currentUser.id === 'd0bb84ba-f968-446c-9792-9bcff8849e37') {
         const el = document.getElementById('admin-sidebar-link');
         const sec = document.getElementById('admin-sidebar-section');
         if (el) el.style.display = '';
