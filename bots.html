@@ -880,14 +880,14 @@
           .select('*')
           .eq('user_id', currentUserId)
           .order('created_at', { ascending: false })
-          .limit(50);
+          .limit(15);
         
         // Get recent options trades  
         const { data: optionsTrades } = await sbClient.from('options_trades')
           .select('*')
           .eq('user_id', currentUserId)
           .order('created_at', { ascending: false })
-          .limit(50);
+          .limit(15);
         
         // Combine and format trades
         const allTrades = [];
@@ -986,7 +986,8 @@
             </tr>
           </thead>
           <tbody>${rows}</tbody>
-        </table>`;
+        </table>
+        <div style="text-align:center; padding:12px; color:#555; font-size:0.75rem;">Showing last 15 trades · <button onclick="loadAllTrades()" style="background:none; border:none; color:var(--accent); cursor:pointer; font-size:0.75rem; text-decoration:underline;">Refresh</button></div>`;
         
       } catch (err) {
         console.error('[loadAllTrades] Error:', err);
