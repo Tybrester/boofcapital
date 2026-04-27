@@ -956,7 +956,7 @@
       });
 
       container.appendChild(grid);
-      systems.filter(s => s.broker !== 'tastytrade').forEach(s => refreshStockBalance(s.id));
+      stockBots.filter(s => s.broker !== 'tastytrade').forEach(s => refreshStockBalance(s.id));
     }
 
 
