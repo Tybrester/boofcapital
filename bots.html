@@ -422,7 +422,10 @@
         <div style="margin-top: 40px; padding-top: 32px; border-top: 1px solid var(--border);">
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
             <h2 style="font-size: 1.1rem; font-weight: 700; color: var(--text); margin: 0;">All Bot Trades</h2>
-            <button onclick="loadAllTrades()" style="background: var(--accent-dim); color: #000; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem;">Refresh</button>
+            <div style="display: flex; gap: 8px;">
+              <button onclick="loadAllTrades()" style="background: var(--accent-dim); color: #000; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem;">Refresh</button>
+              <button onclick="clearAllTrades()" style="background: var(--red); color: #fff; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem;">Clear All</button>
+            </div>
           </div>
           
           <div id="all-trades-container">
@@ -1050,6 +1053,52 @@
       } catch (err) {
         console.error('[loadAllTrades] Error:', err);
         container.innerHTML = '<div class="empty-state">Error loading trades.</div>';
+      }
+    }
+
+    async function clearAllTrades() {
+      if (!confirm('⚠️ WARNING: This will permanently delete ALL trades and reset bot balances to $100,000.\n\nAre you sure?')) return;
+      
+      const container = document.getElementById('all-trades-container');
+      container.innerHTML = '<div class="empty-state">Clearing trades...</div>';
+      
+      try {
+        // Delete stock trades
+        const { error: stockErr } = await sbClient
+          .from('stock_trades')
+          .delete()
+          .eq('user_id', currentUserId);
+        
+        // Delete options trades  
+        const { error: optErr } = await sbClient
+          .from('options_trades')
+          .delete()
+          .eq('user_id', currentUserId);
+        
+        if (stockErr || optErr) {
+          console.error('[ClearAllTrades] Error:', stockErr || optErr);
+          alert('Error clearing trades. Check console.');
+          return;
+        }
+        
+        // Reset all bot paper balances
+        await sbClient.from('stock_bots').update({ paper_balance: 100000 }).eq('user_id', currentUserId);
+        await sbClient.from('options_bots').update({ paper_balance: 100000 }).eq('user_id', currentUserId);
+        
+        console.log('[ClearAllTrades] ✅ All trades cleared, balances reset');
+        
+        // Refresh display
+        await loadAllTrades();
+        
+        // Refresh bot balances in UI
+        await loadBots();
+        await loadOptionsBots();
+        
+        alert('✅ All trades cleared and balances reset to $100,000');
+        
+      } catch (err) {
+        console.error('[ClearAllTrades] Error:', err);
+        container.innerHTML = '<div class="empty-state">Error clearing trades.</div>';
       }
     }
 
