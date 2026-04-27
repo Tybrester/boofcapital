@@ -47,9 +47,9 @@
     .nav-right { display: flex; align-items: center; gap: 16px; }
 
     /* Main layout */
-    main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
 
-    .market-layout { display: flex; flex: 1; overflow: hidden; min-height: 0; }
+    .market-layout { display: flex; flex: 1; overflow: hidden; min-height: 0; min-width: 0; }
 
     /* Chart area */
     .chart-area { flex: 1; display: flex; flex-direction: column; min-width: 0; }
@@ -64,6 +64,22 @@
     .chart-price.neg { color: var(--red); }
 
     #tv-chart { flex: 1; min-height: 0; }
+
+    /* Trades table below chart */
+    .chart-trades { flex-shrink: 0; border-top: 1px solid var(--border); background: var(--surface); height: 220px; overflow-y: auto; }
+    .chart-trades-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); }
+    .chart-trades-title { font-size: 0.72rem; font-weight: 700; color: #444; text-transform: uppercase; letter-spacing: 0.1em; }
+    .trades-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    .trades-table th { padding: 6px 14px; text-align: left; font-size: 0.68rem; font-weight: 700; color: #444; text-transform: uppercase; letter-spacing: 0.07em; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--surface); }
+    .trades-table td { padding: 7px 14px; border-bottom: 1px solid #141414; color: var(--text); vertical-align: middle; white-space: nowrap; }
+    .trades-table tr:last-child td { border-bottom: none; }
+    .trades-table tr:hover td { background: rgba(255,255,255,0.02); }
+    .tbl-side { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 700; }
+    .tbl-side.buy { background: rgba(0,230,118,0.1); color: var(--accent); }
+    .tbl-side.sell { background: rgba(255,23,68,0.1); color: var(--red); }
+    .tbl-pnl.pos { color: var(--accent); font-weight: 700; }
+    .tbl-pnl.neg { color: var(--red); font-weight: 700; }
+    .tbl-empty { padding: 20px 16px; text-align: center; color: #444; font-size: 0.82rem; }
 
     /* Trade panel */
     .trade-panel { width: 300px; flex-shrink: 0; background: var(--surface); border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow-y: auto; }
@@ -124,7 +140,7 @@
 
     .empty-msg { font-size: 0.82rem; color: #444; text-align: center; padding: 16px 0; }
 
-    /* Trade history */
+    /* Trade history (right panel) */
     .history-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #1a1a1a; font-size: 0.78rem; }
     .history-row:last-child { border-bottom: none; }
 
@@ -248,6 +264,17 @@
               <div id="history-list"><div class="empty-msg">No trades yet</div></div>
             </div>
 
+          </div>
+        </div>
+
+        <!-- Trades table below chart+panel -->
+        <div class="chart-trades">
+          <div class="chart-trades-header">
+            <span class="chart-trades-title">Trade History</span>
+            <span id="chart-trades-count" style="font-size:0.72rem;color:#555;"></span>
+          </div>
+          <div id="chart-trades-body">
+            <div class="tbl-empty">No trades yet — select a system and place an order</div>
           </div>
         </div>
       </main>
@@ -515,6 +542,55 @@
           </div>
         </div>`;
       }).join('');
+
+      // Also update the chart-area trades table
+      loadChartTrades(rows);
+    }
+
+    function loadChartTrades(rows) {
+      const body = document.getElementById('chart-trades-body');
+      const countEl = document.getElementById('chart-trades-count');
+      if (!rows || rows.length === 0) {
+        body.innerHTML = '<div class="tbl-empty">No trades yet</div>';
+        if (countEl) countEl.textContent = '';
+        return;
+      }
+      if (countEl) countEl.textContent = rows.length + ' trade' + (rows.length !== 1 ? 's' : '');
+      body.innerHTML = `<table class="trades-table">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Symbol</th>
+            <th>Side</th>
+            <th>Qty</th>
+            <th>Price</th>
+            <th>Total</th>
+            <th>P&amp;L</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(r => {
+            const dt = new Date(r.created_at);
+            const timeStr = dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' + dt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+            const total = (Number(r.price) * r.quantity).toFixed(2);
+            const pnl = r.pnl != null ? ((r.pnl >= 0 ? '+' : '') + '$' + Number(r.pnl).toFixed(2)) : '—';
+            const pnlClass = r.pnl != null ? (r.pnl >= 0 ? 'pos' : 'neg') : '';
+            const status = r.pnl != null ? 'Closed' : 'Open';
+            const statusColor = r.pnl != null ? '#555' : 'var(--accent)';
+            return `<tr>
+              <td style="color:#555;">${timeStr}</td>
+              <td style="font-weight:700;">${r.symbol}</td>
+              <td><span class="tbl-side ${r.action}">${r.action.toUpperCase()}</span></td>
+              <td>${r.quantity}</td>
+              <td>$${Number(r.price).toFixed(2)}</td>
+              <td>$${total}</td>
+              <td class="tbl-pnl ${pnlClass}">${pnl}</td>
+              <td style="color:${statusColor};font-size:0.72rem;font-weight:600;">${status}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>`;
     }
 
     // ── Submit order ─────────────────────────────────────────────────────────
