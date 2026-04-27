@@ -771,12 +771,15 @@
 
     async function loadBots() {
       const container = document.getElementById('bots-container');
+      console.log('[loadBots] currentUserId:', currentUserId);
 
       const { data: stockBots, error } = await sbClient
         .from('stock_bots')
         .select('*')
         .eq('user_id', currentUserId)
         .order('created_at', { ascending: true });
+
+      console.log('[loadBots] stockBots:', stockBots?.length, 'error:', error);
 
       if (error || !stockBots || stockBots.length === 0) {
         container.innerHTML = `<div class="empty-state">
