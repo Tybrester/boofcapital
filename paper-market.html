@@ -265,15 +265,15 @@
         <div class="chart-trades">
           <div class="chart-trades-header">
             <div style="display:flex;gap:0;">
-              <button class="bottom-tab active" id="tab-history" onclick="switchBottomTab('history')">Trade History</button>
-              <button class="bottom-tab" id="tab-positions" onclick="switchBottomTab('positions')">Open Positions</button>
+              <button class="bottom-tab active" id="tab-positions" onclick="switchBottomTab('positions')">Open Positions</button>
+              <button class="bottom-tab" id="tab-history" onclick="switchBottomTab('history')">Trade History</button>
             </div>
             <span id="chart-trades-count" style="font-size:0.72rem;color:#555;"></span>
           </div>
-          <div id="chart-trades-body">
+          <div id="chart-trades-body" style="display:none;">
             <div class="tbl-empty">No trades yet — place an order to get started</div>
           </div>
-          <div id="chart-positions-body" style="display:none;">
+          <div id="chart-positions-body">
             <div class="tbl-empty">No open positions</div>
           </div>
         </div>
@@ -480,7 +480,7 @@
     async function loadSystems() {
       const { data } = await sbClient.from('systems').select('id, name, paper_balance, paper_balance_start').eq('user_id', currentUser.id).order('created_at');
       systems = data || [];
-      if (systems.length > 0) { selectedSystem = systems[0]; renderBalance(); loadHistory(); }
+      if (systems.length > 0) { selectedSystem = systems[0]; renderBalance(); loadOpenPositions(); loadHistory(); }
     }
 
     function renderBalance() {
@@ -547,7 +547,8 @@
       document.getElementById('chart-trades-body').style.display = tab === 'history' ? '' : 'none';
       document.getElementById('chart-positions-body').style.display = tab === 'positions' ? '' : 'none';
       const countEl = document.getElementById('chart-trades-count');
-      if (tab === 'positions') { loadOpenPositions(); if (countEl) countEl.textContent = ''; }
+      if (tab === 'positions') { loadOpenPositions(); }
+      else { if (countEl) countEl.textContent = ''; loadHistory(); }
     }
 
     async function loadOpenPositions() {
