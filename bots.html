@@ -541,6 +541,7 @@
                 <select class="auto-input wide" id="oscan-${b.id}" onchange="toggleOptScanMode('${b.id}', this.value)">
                   <option value="single" ${!b.bot_scan_mode||b.bot_scan_mode==='single'?'selected':''}>Single Symbol</option>
                   <option value="scan_stocks" ${b.bot_scan_mode==='scan_stocks'?'selected':''}>Top Stocks</option>
+                  <option value="scan_futures" ${b.bot_scan_mode==='scan_futures'?'selected':''}>Top Futures (Overnight)</option>
                 </select>
               </div>
               <div id="osym-row-${b.id}" style="${b.bot_scan_mode&&b.bot_scan_mode!=='single'?'display:none':''}"><div class="auto-settings-row"><span>Symbol</span><input class="auto-input" id="osym-${b.id}" value="${b.bot_symbol||'SPY'}" placeholder="SPY"/></div></div>
@@ -1029,8 +1030,9 @@
                     <button type="button" class="dir-pill ${scanMode==='scan_stocks'?'active':''}" id="scan-scan_stocks-${s.id}" onclick="setScanMode('${s.id}','scan_stocks')">Top Stocks</button>
                     <button type="button" class="dir-pill ${scanMode==='scan_crypto'?'active':''}" id="scan-scan_crypto-${s.id}" onclick="setScanMode('${s.id}','scan_crypto')">Top Crypto</button>
                     <button type="button" class="dir-pill ${scanMode==='scan_all'?'active':''}" id="scan-scan_all-${s.id}" onclick="setScanMode('${s.id}','scan_all')">All Markets</button>
+                    <button type="button" class="dir-pill ${scanMode==='scan_futures'?'active':''}" id="scan-scan_futures-${s.id}" onclick="setScanMode('${s.id}','scan_futures')">Top Futures</button>
                   </div>
-                  <div id="scan-hint-${s.id}" style="font-size:0.7rem;color:#555;text-align:right;">${scanMode==='single'?'Uses the symbol below':scanMode==='scan_stocks'?'50 top US stocks':'scan_crypto'===scanMode?'20 top crypto':'50 stocks + 20 crypto'}</div>
+                  <div id="scan-hint-${s.id}" style="font-size:0.7rem;color:#555;text-align:right;">${scanMode==='single'?'Uses the symbol below':scanMode==='scan_stocks'?'50 top US stocks':scanMode==='scan_crypto'?'20 top crypto':scanMode==='scan_futures'?'20 top futures (overnight)':'50 stocks + 20 crypto'}</div>
                 </div>
                 <input type="hidden" id="scanmode-${s.id}" value="${scanMode}" />
               </div>

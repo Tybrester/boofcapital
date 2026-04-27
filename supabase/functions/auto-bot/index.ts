@@ -555,6 +555,30 @@ Deno.serve(async (req) => {
     ];
     const SCAN_ALL = [...SCAN_STOCKS, ...SCAN_CRYPTO];
 
+    // Top 20 Futures (liquid, trade overnight)
+    const SCAN_FUTURES = [
+      'ES=F',    // E-mini S&P 500
+      'NQ=F',    // E-mini NASDAQ
+      'YM=F',    // E-mini Dow
+      'CL=F',    // Crude Oil WTI
+      'GC=F',    // Gold
+      'SI=F',    // Silver
+      'ZN=F',    // 10-Year T-Note
+      'ZB=F',    // 30-Year T-Bond
+      'ZF=F',    // 5-Year T-Note
+      '6E=F',    // Euro FX
+      '6J=F',    // Japanese Yen
+      '6B=F',    // British Pound
+      '6C=F',    // Canadian Dollar
+      '6A=F',    // Australian Dollar
+      'HG=F',    // Copper
+      'NG=F',    // Natural Gas
+      'ZW=F',    // Wheat
+      'ZC=F',    // Corn
+      'ZS=F',    // Soybeans
+      'ZL=F',    // Soybean Oil
+    ];
+
     // ── Per-symbol processing helper ─────────────────────────────────────────
     async function processSymbol(bot: Record<string,unknown>, sym: string, settings: BotSettings): Promise<object> {
       try {
@@ -686,6 +710,13 @@ Deno.serve(async (req) => {
         } else if (scanMode === 'scan_all') {
           for (let i = 0; i < SCAN_ALL.length; i += 10) {
             const batch = SCAN_ALL.slice(i, i + 10);
+            const batchResults = await Promise.all(batch.map(sym => processSymbol(bot, sym, settings)));
+            results.push(...batchResults);
+          }
+        } else if (scanMode === 'scan_futures') {
+          // Top 20 Futures - trade overnight
+          for (let i = 0; i < SCAN_FUTURES.length; i += 10) {
+            const batch = SCAN_FUTURES.slice(i, i + 10);
             const batchResults = await Promise.all(batch.map(sym => processSymbol(bot, sym, settings)));
             results.push(...batchResults);
           }

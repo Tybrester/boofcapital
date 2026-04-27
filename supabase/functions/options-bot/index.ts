@@ -131,34 +131,70 @@ function generateSignalRSIMACD(candles: Candle[]) {
 }
 
 // ─────────────────────────────────────────────
-// FETCH CANDLES (Polygon.io)
+// FETCH CANDLES (Yahoo Finance - Free)
 // ─────────────────────────────────────────────
 
 interface Candle { time: number; open: number; high: number; low: number; close: number; }
 
 async function fetchCandles(symbol: string, interval = '1h', bars = 150): Promise<Candle[]> {
-  const POLYGON_KEY = Deno.env.get('POLYGON_API_KEY')!;
-  const intervalMap: Record<string, { multiplier: number; timespan: string; days: number }> = {
-    '1m':  { multiplier: 1,  timespan: 'minute', days: 5   },
-    '5m':  { multiplier: 5,  timespan: 'minute', days: 10  },
-    '10m': { multiplier: 10, timespan: 'minute', days: 15  },
-    '15m': { multiplier: 15, timespan: 'minute', days: 20  },
-    '30m': { multiplier: 30, timespan: 'minute', days: 30  },
-    '45m': { multiplier: 45, timespan: 'minute', days: 45  },
-    '1h':  { multiplier: 1,  timespan: 'hour',   days: 60  },
-    '4h':  { multiplier: 4,  timespan: 'hour',   days: 180 },
-    '1d':  { multiplier: 1,  timespan: 'day',    days: 365 },
+  // Yahoo Finance API (free, no key needed)
+  const yahooSymbol = symbol.includes('-USD') ? symbol.replace('-USD', '-USD') : symbol;
+  
+  // Map intervals to Yahoo format
+  const intervalMap: Record<string, { yahooInterval: string; range: string }> = {
+    '1m':  { yahooInterval: '1m',  range: '1d'   },
+    '5m':  { yahooInterval: '5m',  range: '5d'   },
+    '10m': { yahooInterval: '15m', range: '5d'   },
+    '15m': { yahooInterval: '15m', range: '5d'   },
+    '30m': { yahooInterval: '30m', range: '1mo'  },
+    '45m': { yahooInterval: '60m', range: '1mo'  },
+    '1h':  { yahooInterval: '60m', range: '1mo'  },
+    '2h':  { yahooInterval: '60m', range: '3mo'  },
+    '4h':  { yahooInterval: '60m', range: '6mo'  },
+    '1d':  { yahooInterval: '1d',  range: '1y'   },
   };
-  const { multiplier, timespan, days } = intervalMap[interval] ?? intervalMap['1h'];
-  const to   = new Date();
-  const from = new Date(to.getTime() - days * 24 * 60 * 60 * 1000);
-  const url = `https://api.polygon.io/v2/aggs/ticker/${symbol}/range/${multiplier}/${timespan}/${from.toISOString().split('T')[0]}/${to.toISOString().split('T')[0]}?adjusted=true&sort=asc&limit=50000&apiKey=${POLYGON_KEY}`;
-  const res  = await fetch(url);
+  
+  const { yahooInterval, range } = intervalMap[interval] ?? intervalMap['1h'];
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?interval=${yahooInterval}&range=${range}`;
+  
+  const res = await fetch(url, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    }
+  });
+  
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Yahoo API error: ${res.status} - ${text.substring(0, 100)}`);
+  }
+  
   const json = await res.json();
-  if (!json.results?.length) throw new Error(`No Polygon data for ${symbol}`);
-  const candles: Candle[] = json.results.map((r: { t: number; o: number; h: number; l: number; c: number }) => ({
-    time: r.t, open: r.o, high: r.h, low: r.l, close: r.c,
-  }));
+  
+  if (!json.chart?.result?.[0]) {
+    throw new Error(`No Yahoo data for ${symbol}`);
+  }
+  
+  const result = json.chart.result[0];
+  const timestamps = result.timestamp || [];
+  const quote = result.indicators?.quote?.[0] || {};
+  
+  const candles: Candle[] = [];
+  for (let i = 0; i < timestamps.length; i++) {
+    if (quote.open?.[i] && quote.high?.[i] && quote.low?.[i] && quote.close?.[i]) {
+      candles.push({
+        time: timestamps[i] * 1000,
+        open: quote.open[i],
+        high: quote.high[i],
+        low: quote.low[i],
+        close: quote.close[i],
+      });
+    }
+  }
+  
+  if (candles.length < 60) {
+    throw new Error(`Not enough data for ${symbol} (got ${candles.length} candles)`);
+  }
+  
   return candles.slice(-bars);
 }
 
