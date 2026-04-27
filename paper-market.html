@@ -193,7 +193,7 @@
           <!-- Chart -->
           <div class="chart-area">
             <div class="chart-search-bar">
-              <input id="chart-symbol-search" class="chart-search-input" placeholder="Search symbol… (e.g. SPY)" autocomplete="off" />
+              <input id="chart-symbol-search" class="chart-search-input" placeholder="Type symbol + Enter (e.g. SPY, AAPL, TSLA)" autocomplete="off" />
               <button onclick="applySymbolSearch()" class="chart-search-btn">Go</button>
             </div>
             <div id="tv-chart"></div>
@@ -314,7 +314,7 @@
         locale: 'en',
         toolbar_bg: '#111111',
         enable_publishing: false,
-        allow_symbol_change: true,
+        allow_symbol_change: false,
         hide_top_toolbar: false,
         hide_legend: false,
         save_image: false,
