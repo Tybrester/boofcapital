@@ -313,7 +313,17 @@
         gridColor: 'rgba(255,255,255,0.03)',
       });
       tvWidget.onChartReady(() => {
-        tvWidget.chart().onSymbolChanged().subscribe(null, syncChartSymbol);
+        try { tvWidget.chart().onSymbolChanged().subscribe(null, syncChartSymbol); } catch(e) {}
+        // Fallback poll — sync symbol every second
+        setInterval(() => {
+          try {
+            const info = tvWidget.chart().symbolInterval();
+            if (info && info.symbol) {
+              const raw = info.symbol.replace(/^.*:/,'').toUpperCase();
+              if (raw && raw !== currentSymbol) syncChartSymbol({ ticker: raw, name: raw });
+            }
+          } catch(e) {}
+        }, 1000);
       });
     }
 
