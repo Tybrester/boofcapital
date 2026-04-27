@@ -215,7 +215,7 @@
               </div>
 
               <div class="field-label">Symbol</div>
-              <input class="field-input" id="order-symbol" placeholder="AAPL" style="text-transform:uppercase;" oninput="this.value=this.value.toUpperCase();updateSummary()" />
+              <input class="field-input" id="order-symbol" placeholder="AAPL" readonly style="text-transform:uppercase;color:var(--accent);cursor:default;caret-color:transparent;" />
 
               <div id="limit-price-row" style="display:none;">
                 <div class="field-label">Limit Price ($)</div>
@@ -627,9 +627,9 @@
       document.getElementById('user-email-toggle').addEventListener('click', e => { e.stopPropagation(); dropdown.classList.toggle('open'); });
       document.addEventListener('click', e => { if (!dropdown.contains(e.target)) dropdown.classList.remove('open'); });
 
+      document.getElementById('order-symbol').value = currentSymbol;
       initChart(currentSymbol, currentInterval);
       startPricePoll(currentSymbol);
-      document.getElementById('order-symbol').value = currentSymbol;
       updateSummary();
       await loadSystems();
     }
