@@ -416,7 +416,6 @@
       const id = document.getElementById('sys-select').value;
       selectedSystem = systems.find(s => s.id === id) || null;
       renderBalance();
-      loadPositions();
       loadHistory();
     }
 
@@ -432,43 +431,6 @@
       pctEl.className = 'balance-pct ' + (pct >= 0 ? 'pos' : 'neg');
     }
 
-    // ── Open positions (open trades from this system) ────────────────────────
-    async function loadPositions() {
-      const el = document.getElementById('positions-list');
-      if (!selectedSystem) { el.innerHTML = '<div class="empty-msg">Select a system first</div>'; return; }
-      const { data } = await sbClient.from('trades')
-        .select('id, symbol, action, price, quantity, status, created_at')
-        .eq('user_id', currentUser.id)
-        .eq('system_id', selectedSystem.id)
-        .eq('source', 'paper-market')
-        .in('status', ['filled', 'open'])
-        .is('pnl', null)
-        .order('created_at', { ascending: false });
-
-      const rows = data || [];
-      if (rows.length === 0) { el.innerHTML = '<div class="empty-msg">No open positions</div>'; return; }
-
-      el.innerHTML = rows.map(r => {
-        const currentP = livePrice || Number(r.price);
-        const pnl = r.action === 'buy'
-          ? (currentP - Number(r.price)) * r.quantity
-          : (Number(r.price) - currentP) * r.quantity;
-        const pnlClass = pnl >= 0 ? 'pos' : 'neg';
-        return `<div class="position-row">
-          <div>
-            <div style="display:flex;align-items:center;gap:6px;">
-              <span class="pos-sym">${r.symbol}</span>
-              <span class="pos-side ${r.action}">${r.action.toUpperCase()}</span>
-            </div>
-            <div style="font-size:0.72rem;color:#555;margin-top:2px;">${r.quantity} shares @ $${Number(r.price).toFixed(2)}</div>
-          </div>
-          <div style="text-align:right;">
-            <div class="pos-pnl ${pnlClass}">${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}</div>
-            <button class="pos-close" onclick="closePosition('${r.id}', '${r.action}', ${r.quantity}, ${r.price})">Close</button>
-          </div>
-        </div>`;
-      }).join('');
-    }
 
     async function closePosition(tradeId, originalAction, qty, entryPrice) {
       if (!selectedSystem) return;
@@ -496,14 +458,13 @@
         filled_at: new Date().toISOString(), created_at: new Date().toISOString()
       });
 
-      loadPositions(); loadHistory();
+      loadHistory();
       showMsg('Position closed · P&L: ' + (pnl >= 0 ? '+' : '') + '$' + pnl.toFixed(2), 'success');
     }
 
     // ── Trade history ────────────────────────────────────────────────────────
     async function loadHistory() {
-      const el = document.getElementById('history-list');
-      if (!selectedSystem) { el.innerHTML = '<div class="empty-msg">Select a system first</div>'; return; }
+      if (!selectedSystem) { loadChartTrades([]); return; }
       const { data } = await sbClient.from('trades')
         .select('id, symbol, action, price, quantity, pnl, created_at')
         .eq('user_id', currentUser.id)
@@ -512,28 +473,7 @@
         .order('created_at', { ascending: false })
         .limit(20);
 
-      const rows = data || [];
-      if (rows.length === 0) { el.innerHTML = '<div class="empty-msg">No trades yet</div>'; return; }
-      el.innerHTML = rows.map(r => {
-        const pnlText = r.pnl != null ? ((r.pnl >= 0 ? '+' : '') + '$' + Number(r.pnl).toFixed(2)) : '';
-        const pnlColor = r.pnl != null ? (r.pnl >= 0 ? 'var(--accent)' : 'var(--red)') : '';
-        const dt = new Date(r.created_at);
-        const timeStr = dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' + dt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-        return `<div class="history-row">
-          <div>
-            <span style="font-weight:700;">${r.symbol}</span>
-            <span style="color:${r.action==='buy'?'var(--accent)':'var(--red)'};margin-left:6px;font-size:0.72rem;font-weight:700;">${r.action.toUpperCase()}</span>
-            <div style="color:#555;font-size:0.7rem;">${timeStr}</div>
-          </div>
-          <div style="text-align:right;">
-            <div>${r.quantity} × $${Number(r.price).toFixed(2)}</div>
-            ${pnlText ? `<div style="color:${pnlColor};font-weight:700;">${pnlText}</div>` : ''}
-          </div>
-        </div>`;
-      }).join('');
-
-      // Also update the chart-area trades table
-      loadChartTrades(rows);
+      loadChartTrades(data || []);
     }
 
     function loadChartTrades(rows) {
@@ -556,6 +496,7 @@
             <th>Total</th>
             <th>P&amp;L</th>
             <th>Status</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -565,8 +506,10 @@
             const total = (Number(r.price) * r.quantity).toFixed(2);
             const pnl = r.pnl != null ? ((r.pnl >= 0 ? '+' : '') + '$' + Number(r.pnl).toFixed(2)) : '—';
             const pnlClass = r.pnl != null ? (r.pnl >= 0 ? 'pos' : 'neg') : '';
-            const status = r.pnl != null ? 'Closed' : 'Open';
-            const statusColor = r.pnl != null ? '#555' : 'var(--accent)';
+            const isOpen = r.pnl == null;
+            const status = isOpen ? 'Open' : 'Closed';
+            const statusColor = isOpen ? 'var(--accent)' : '#555';
+            const closeBtn = isOpen ? `<button class="pos-close" onclick="closePosition('${r.id}','${r.action}',${r.quantity},${r.price})">Close</button>` : '';
             return `<tr>
               <td style="color:#555;">${timeStr}</td>
               <td style="font-weight:700;">${r.symbol}</td>
@@ -576,6 +519,7 @@
               <td>$${total}</td>
               <td class="tbl-pnl ${pnlClass}">${pnl}</td>
               <td style="color:${statusColor};font-size:0.72rem;font-weight:600;">${status}</td>
+              <td>${closeBtn}</td>
             </tr>`;
           }).join('')}
         </tbody>
