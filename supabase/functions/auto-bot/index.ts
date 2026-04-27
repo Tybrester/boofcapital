@@ -515,7 +515,7 @@ Deno.serve(async (req) => {
 
         const { data: trade } = await supabase.from('trades').insert({
           user_id: system.user_id, system_id: system.id, symbol: sym, action: signal,
-          quantity, price, order_type: 'market', broker: system.broker || 'paper',
+          quantity, price, order_type: 'market', broker: system.broker || 'paper', source: 'auto',
           status: tradeStatus, broker_order_id: orderId || null, broker_error: brokerError || null,
           filled_at: tradeStatus === 'filled' ? new Date().toISOString() : null,
           payload: { source: 'auto-bot', scan_mode: system.bot_scan_mode, reason, trend, ema: ema?.toFixed(2), adx: adx?.toFixed(1) },

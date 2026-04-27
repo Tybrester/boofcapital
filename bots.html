@@ -1013,6 +1013,7 @@
         .from('trades')
         .select('id, system_id, symbol, action, price, quantity, pnl, status, created_at')
         .eq('user_id', currentUserId)
+        .eq('source', 'auto')
         .order('created_at', { ascending: false })
         .limit(100);
       if (filterVal) q = q.eq('system_id', filterVal);
