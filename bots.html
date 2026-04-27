@@ -291,7 +291,12 @@
           <!-- Stock Bot Activity -->
           <div id="panel-stocks">
             <div class="trades-panel-header">
-              <div class="trades-panel-title">Stock Bot Activity</div>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                <div class="trades-panel-title">Stock Bot Activity</div>
+                <select id="stock-bot-filter" style="background:#111;border:1px solid #222;color:#888;font-size:0.72rem;border-radius:6px;padding:3px 8px;" onchange="loadTrades()">
+                  <option value="">All Bots</option>
+                </select>
+              </div>
               <div class="pnl-stats-grid" id="pnl-stats">
                 <div class="pnl-stat"><div class="pnl-stat-label">Total P&L</div><div class="pnl-stat-value neu" id="stat-pnl">—</div></div>
                 <div class="pnl-stat"><div class="pnl-stat-label">Win Rate</div><div class="pnl-stat-value neu" id="stat-wr">—</div></div>
@@ -310,7 +315,12 @@
           <!-- Options Bot Activity -->
           <div id="panel-options">
             <div class="trades-panel-header">
-              <div class="trades-panel-title" style="color:#ffc107;">Options Bot Activity</div>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                <div class="trades-panel-title" style="color:#ffc107;">Options Bot Activity</div>
+                <select id="options-bot-filter" style="background:#111;border:1px solid #222;color:#888;font-size:0.72rem;border-radius:6px;padding:3px 8px;" onchange="loadOptionsTrades()">
+                  <option value="">All Bots</option>
+                </select>
+              </div>
               <div class="pnl-stats-grid" id="opt-pnl-stats">
                 <div class="pnl-stat"><div class="pnl-stat-label">Total P&L</div><div class="pnl-stat-value neu" id="opt-stat-pnl">—</div></div>
                 <div class="pnl-stat"><div class="pnl-stat-label">Win Rate</div><div class="pnl-stat-value neu" id="opt-stat-wr">—</div></div>
@@ -536,6 +546,13 @@
       container.appendChild(grid);
       // Refresh each bot's liquidation balance from the edge function
       bots.forEach(b => refreshOptBalance(b.id));
+      // Populate options bot filter dropdown
+      const optFilter = document.getElementById('options-bot-filter');
+      if (optFilter) {
+        const cur = optFilter.value;
+        optFilter.innerHTML = '<option value="">All Bots</option>' +
+          bots.map(b => `<option value="${b.id}" ${cur===b.id?'selected':''}>${b.name}</option>`).join('');
+      }
     }
 
     function toggleOptScanMode(botId, mode) {
@@ -784,6 +801,13 @@
       container.appendChild(grid);
       // Refresh each paper bot's liquidation balance
       systems.filter(s => s.broker !== 'tastytrade').forEach(s => refreshStockBalance(s.id));
+      // Populate stock bot filter dropdown
+      const stockFilter = document.getElementById('stock-bot-filter');
+      if (stockFilter) {
+        const cur = stockFilter.value;
+        stockFilter.innerHTML = '<option value="">All Bots</option>' +
+          systems.map(s => `<option value="${s.id}" ${cur===s.id?'selected':''}>${s.name}</option>`).join('');
+      }
     }
 
 
@@ -933,12 +957,15 @@
 
     async function loadOptionsTrades() {
       const feed = document.getElementById('options-feed');
-      const { data: trades } = await sbClient
+      const filterVal = document.getElementById('options-bot-filter')?.value || '';
+      let q = sbClient
         .from('options_trades')
         .select('*')
         .eq('user_id', currentUserId)
         .order('created_at', { ascending: false })
         .limit(100);
+      if (filterVal) q = q.eq('bot_id', filterVal);
+      const { data: trades } = await q;
 
       const t = trades || [];
       const closed = t.filter(x => x.pnl != null);
@@ -981,12 +1008,15 @@
     }
 
     async function loadTrades() {
-      const { data: trades } = await sbClient
+      const filterVal = document.getElementById('stock-bot-filter')?.value || '';
+      let q = sbClient
         .from('trades')
         .select('id, system_id, symbol, action, price, quantity, pnl, status, created_at')
         .eq('user_id', currentUserId)
         .order('created_at', { ascending: false })
         .limit(100);
+      if (filterVal) q = q.eq('system_id', filterVal);
+      const { data: trades } = await q;
 
       const feed = document.getElementById('trades-feed');
       const t = trades || [];
