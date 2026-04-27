@@ -81,9 +81,15 @@ interface Candle { time: number; open: number; high: number; low: number; close:
 async function fetchCandles(symbol: string, interval = '1h', bars = 150): Promise<Candle[]> {
   const POLYGON_KEY = Deno.env.get('POLYGON_API_KEY')!;
   const intervalMap: Record<string, { multiplier: number; timespan: string; days: number }> = {
-    '1h': { multiplier: 1, timespan: 'hour', days: 60 },
-    '4h': { multiplier: 4, timespan: 'hour', days: 180 },
-    '1d': { multiplier: 1, timespan: 'day',  days: 365 },
+    '1m':  { multiplier: 1,  timespan: 'minute', days: 5   },
+    '5m':  { multiplier: 5,  timespan: 'minute', days: 10  },
+    '10m': { multiplier: 10, timespan: 'minute', days: 15  },
+    '15m': { multiplier: 15, timespan: 'minute', days: 20  },
+    '30m': { multiplier: 30, timespan: 'minute', days: 30  },
+    '45m': { multiplier: 45, timespan: 'minute', days: 45  },
+    '1h':  { multiplier: 1,  timespan: 'hour',   days: 60  },
+    '4h':  { multiplier: 4,  timespan: 'hour',   days: 180 },
+    '1d':  { multiplier: 1,  timespan: 'day',    days: 365 },
   };
   const { multiplier, timespan, days } = intervalMap[interval] ?? intervalMap['1h'];
   const to   = new Date();

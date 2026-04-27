@@ -461,9 +461,15 @@
               <div class="auto-settings-row"><span>$ Per Trade</span><input class="auto-input" id="odol-${b.id}" type="number" value="${b.bot_dollar_amount||500}" min="100"/></div>
               <div class="auto-settings-row"><span>Interval</span>
                 <select class="auto-input wide" id="oint-${b.id}">
-                  <option value="1h" ${b.bot_interval==='1h'?'selected':''}>1 Hour</option>
-                  <option value="4h" ${b.bot_interval==='4h'?'selected':''}>4 Hour</option>
-                  <option value="1d" ${b.bot_interval==='1d'?'selected':''}>Daily</option>
+                  <option value="1m"  ${b.bot_interval==='1m' ?'selected':''}>1 min</option>
+                  <option value="5m"  ${b.bot_interval==='5m' ?'selected':''}>5 min</option>
+                  <option value="10m" ${b.bot_interval==='10m'?'selected':''}>10 min</option>
+                  <option value="15m" ${b.bot_interval==='15m'?'selected':''}>15 min</option>
+                  <option value="30m" ${b.bot_interval==='30m'?'selected':''}>30 min</option>
+                  <option value="45m" ${b.bot_interval==='45m'?'selected':''}>45 min</option>
+                  <option value="1h"  ${b.bot_interval==='1h' ||!b.bot_interval?'selected':''}>1 Hour</option>
+                  <option value="4h"  ${b.bot_interval==='4h' ?'selected':''}>4 Hour</option>
+                  <option value="1d"  ${b.bot_interval==='1d' ?'selected':''}>Daily</option>
                 </select>
               </div>
               <div class="auto-settings-row"><span>Expiration</span>
