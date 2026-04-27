@@ -326,14 +326,16 @@ Deno.serve(async (req) => {
 
     if (req.method === 'POST') {
       const authHeader = req.headers.get('Authorization');
-      const cronSecret = (await req.json().catch(() => ({}))).cron_secret;
+      const body = await req.json().catch(() => ({}));
+      const cronSecret = body.cron_secret;
       const validCron  = cronSecret === Deno.env.get('CRON_SECRET');
       if (!validCron && authHeader) {
         const token = authHeader.replace('Bearer ', '');
         const { data: { user } } = await supabase.auth.getUser(token);
         if (user) targetUserId = user.id;
       }
-      try { const b = await req.json().catch(() => ({})); targetBotId = b.bot_id || null; targetUserId = targetUserId || b.user_id || null; } catch (_) {}
+      targetBotId = body.bot_id || null;
+      targetUserId = targetUserId || body.user_id || null;
     }
 
     let query = supabase.from('options_bots').select('*').eq('enabled', true).eq('auto_submit', true);
