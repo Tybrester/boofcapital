@@ -592,9 +592,6 @@
               <div id="obrk-warn-${b.id}" style="font-size:0.72rem;color:#ff7043;display:${b.broker==='tastytrade'?'flex':'none'};align-items:center;gap:6px;background:rgba(255,112,67,0.08);border:1px solid rgba(255,112,67,0.2);border-radius:6px;padding:8px 10px;">
                 <span>Live options trading — real orders will be placed on Tastytrade</span>
               </div>
-              <div class="auto-settings-row" style="justify-content:flex-end;gap:8px;">
-                <button class="save-btn" style="background:#ffc107;color:#000;" onclick="saveOptionsSettings('${b.id}')">Save Settings</button>
-              </div>
               <div class="run-result" id="opt-run-result-${b.id}"></div>
             </div>
             </div>
@@ -921,9 +918,6 @@
                   <option value="supertrend" ${(s.bot_signal||'supertrend')==='supertrend'?'selected':''}>Adaptive SuperTrend + EMA50 + ADX(14)</option>
                   <option value="rsi_macd" ${s.bot_signal==='rsi_macd'?'selected':''}>RSI + EMA + MACD + Bollinger Bands + ATR</option>
                 </select>
-              </div>
-              <div style="display:flex;gap:8px;align-items:center;">
-                <button class="save-btn" onclick="saveAutoSettings('${s.id}')">Save Settings</button>
               </div>
               <div class="run-result" id="run-result-${s.id}"></div>
             </div>
