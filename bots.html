@@ -411,6 +411,7 @@
       const el = document.getElementById('opt-paper-bal-' + botId);
       const pctEl = document.getElementById('opt-paper-pct-' + botId);
       if (!el) return;
+      // Show initial value from bot data
       try {
         const res = await fetch(`${SUPABASE_URL}/functions/v1/options-bot?bot_id=${botId}`, {
           headers: { 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` }
@@ -427,12 +428,12 @@
       } catch (_) {}
     }
 
-    async function refreshStockBalance(systemId) {
-      const el = document.getElementById('paper-bal-' + systemId);
-      const pctEl = document.getElementById('paper-pct-' + systemId);
+    async function refreshStockBalance(botId) {
+      const el = document.getElementById('paper-bal-' + botId);
+      const pctEl = document.getElementById('paper-pct-' + botId);
       if (!el) return;
       try {
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/auto-bot?system_id=${systemId}`, {
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/auto-bot?bot_id=${botId}`, {
           headers: { 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` }
         });
         const data = await res.json();
