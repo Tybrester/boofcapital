@@ -1148,6 +1148,13 @@ Deno.serve(async (req) => {
         const candles = await fetchCandles(sym, settings.interval, 150, bot.user_id as string);
         if (candles.length < 60) return { bot_id: bot.id, symbol: sym, status: 'skipped', reason: 'Not enough candle data' };
 
+        // Check database for REAL open trade on this symbol
+        const { data: realOpenTrade } = await supabase.from('trades')
+          .select('id, action').eq('bot_id', bot.id as string).eq('symbol', sym)
+          .eq('source', 'auto-bot').eq('status', 'filled').is('pnl', null)
+          .limit(1).maybeSingle();
+        const hasRealPosition = !!realOpenTrade;
+
         const overrideSettings = { ...settings, symbol: sym };
         const botSignal = (bot.bot_signal as string) || 'supertrend';
         const tradeDirection = settings.tradeDirection || 'both';
@@ -1161,7 +1168,39 @@ Deno.serve(async (req) => {
         } else {
           signalResult = generateSignal(candles, overrideSettings);
         }
-        const { signal, price, trend, ema, adx, reason } = signalResult;
+        let { signal, price, trend, ema, adx, reason } = signalResult;
+        
+        // Override signal based on REAL database state (not simulated inLong)
+        // If no real position exists and signal says "none" due to simulated inLong=true,
+        // re-evaluate: check if the raw indicators favor a buy
+        if (!hasRealPosition && signal === 'none' && reason.includes('inLong=true')) {
+          // The simulated history thinks we're in a position, but we have NO real trade
+          // Re-check: if current conditions favor entry, generate buy signal
+          const curClose = candles[candles.length - 2]?.close || candles[candles.length - 1]?.close;
+          if (botSignal === 'boof20') {
+            const match = reason.match(/predicted_return=([-\d.]+)/);
+            const predReturn = match ? parseFloat(match[1]) : 0;
+            if (predReturn > 0 && (tradeDirection === 'both' || tradeDirection === 'long')) {
+              signal = 'buy';
+              reason = `Boof 2.0 BUY (no real position, pred_ret=${predReturn.toFixed(4)}). ${reason}`;
+            }
+          } else if (botSignal === 'supertrend' || botSignal === 'boof10') {
+            const match = reason.match(/adx=([\d.]+)/);
+            const curAdx = match ? parseFloat(match[1]) : 0;
+            if (curAdx > 20 && reason.includes('inLong=true') && (tradeDirection === 'both' || tradeDirection === 'long')) {
+              signal = 'buy';
+              reason = `Boof 1.0 BUY (no real position, adx=${curAdx.toFixed(1)}). ${reason}`;
+            }
+          }
+          if (signal !== 'none') {
+            console.log(`[AutoBot] ${sym} OVERRIDE: simulated inLong but no real position → ${signal}`);
+          }
+        }
+        // If we HAVE a real position but signal says buy (simulated inLong=false), skip the buy
+        if (hasRealPosition && signal === 'buy') {
+          return { bot_id: bot.id, symbol: sym, status: 'skipped', reason: `Already have real open ${realOpenTrade.action} position` };
+        }
+        
         console.log(`[AutoBot] ${sym} → ${signal} | ${reason}`);
 
         if (signal === 'buy'  && settings.tradeDirection === 'short') return { bot_id: bot.id, symbol: sym, status: 'skipped', reason: 'Direction: short only' };
