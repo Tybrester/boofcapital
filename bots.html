@@ -1611,11 +1611,14 @@
             action: t.action,
             quantity: t.quantity,
             price: t.price,
+            entryPrice: t.entry_price || t.price,
+            exitPrice: t.exit_price,
             pnl: t.pnl,
             status: t.status,
             broker: t.broker,
             createdAt: t.created_at,
-            filledAt: t.filled_at
+            filledAt: t.filled_at,
+            closedAt: t.closed_at
           });
         });
         
@@ -1775,7 +1778,25 @@
             : t.action?.toUpperCase();
           const actionClass = isOptions ? 'trade-buy' : (t.action === 'buy' ? 'trade-buy' : 'trade-sell');
           
-          return `<tr>
+          const isClosed = t.status === 'closed';
+          const rowClickAttr = isClosed ? `onclick="toggleTradeDetail('${t.id}')" style="cursor:pointer;"` : '';
+          const entryP = Number(t.entryPrice || t.price).toFixed(2);
+          const exitP = t.exitPrice ? Number(t.exitPrice).toFixed(2) : '-';
+          const holdTime = (isClosed && t.closedAt && t.createdAt) ? timeSince(new Date(t.createdAt), new Date(t.closedAt)) : '';
+          const detailRow = isClosed ? `<tr id="trade-detail-${t.id}" style="display:none;">
+            <td colspan="9" style="background:#0d0d0d;padding:12px 20px;border-left:3px solid ${t.pnl > 0 ? 'var(--green)' : 'var(--red)'};">
+              <div style="display:flex;gap:32px;flex-wrap:wrap;font-size:0.8rem;">
+                <div><span style="color:#666;">Entry Price</span><br><strong style="color:var(--text);">$${entryP}</strong></div>
+                <div><span style="color:#666;">Exit Price</span><br><strong style="color:var(--text);">$${exitP}</strong></div>
+                <div><span style="color:#666;">Qty</span><br><strong style="color:var(--text);">${t.quantity}</strong></div>
+                <div><span style="color:#666;">P&L</span><br><strong class="${pnlClass}">${pnlText}</strong></div>
+                <div><span style="color:#666;">Opened</span><br><strong style="color:var(--text);">${new Date(t.createdAt).toLocaleString()}</strong></div>
+                <div><span style="color:#666;">Closed</span><br><strong style="color:var(--text);">${t.closedAt ? new Date(t.closedAt).toLocaleString() : '-'}</strong></div>
+                <div><span style="color:#666;">Hold Time</span><br><strong style="color:var(--text);">${holdTime || '-'}</strong></div>
+              </div>
+            </td>
+          </tr>` : '';
+          return `<tr ${rowClickAttr}>
             <td>
               <span class="bot-name">${t.botName}</span>
               ${typeBadge}
@@ -1786,12 +1807,12 @@
             </td>
             <td class="${actionClass}">${actionDisplay}</td>
             <td>${t.quantity}</td>
-            <td>$${Number(t.price).toFixed(2)}</td>
+            <td>$${entryP}</td>
             <td class="${pnlClass}">${pnlText}<span style="font-size:0.75rem;color:#bbb;">${pnlPercentText}</span></td>
             <td>${statusBadge}</td>
             <td class="time-ago">${timeAgo}<br><span style="font-size:0.7rem;color:#aaa;">${new Date(t.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span></td>
             <td>${closeButton}</td>
-          </tr>`;
+          </tr>${detailRow}`;
         }).join('');
         
         // Pagination controls
@@ -2015,15 +2036,24 @@
       }
     }
 
-    function timeSince(date) {
-      const seconds = Math.floor((new Date() - date) / 1000);
-      if (seconds < 60) return 'just now';
+    function timeSince(date, endDate) {
+      const end = endDate || new Date();
+      const seconds = Math.floor((end - date) / 1000);
+      if (seconds < 60) return endDate ? `${seconds}s` : 'just now';
       const minutes = Math.floor(seconds / 60);
-      if (minutes < 60) return `${minutes}m ago`;
+      if (minutes < 60) return `${minutes}m${endDate ? '' : ' ago'}`;
       const hours = Math.floor(minutes / 60);
-      if (hours < 24) return `${hours}h ago`;
+      const remMin = minutes % 60;
+      if (hours < 24) return `${hours}h ${remMin}m${endDate ? '' : ' ago'}`;
       const days = Math.floor(hours / 24);
-      return `${days}d ago`;
+      return `${days}d${endDate ? '' : ' ago'}`;
+    }
+
+    function toggleTradeDetail(tradeId) {
+      const row = document.getElementById(`trade-detail-${tradeId}`);
+      if (row) {
+        row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
+      }
     }
 
     // Request browser notification permission
