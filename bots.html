@@ -1836,16 +1836,26 @@
       try {
         console.log(`[CloseTrade] Closing ${botType} trade ${tradeId}`);
         
-        // Get current live price via edge function
+        // Get current live price via edge function (crypto uses different endpoint)
         let currentPrice = 0;
         try {
           const { data: session } = await sbClient.auth.getSession();
           const token = session?.access_token;
-          const res = await fetch(`${SUPABASE_URL}/functions/v1/alpaca-data?symbol=${symbol}`, {
-            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
-          });
-          const json = await res.json();
-          currentPrice = json?.price || 0;
+          const isCrypto = symbol.includes('-USD') || ['BTC','ETH','SOL','XRP','BNB','DOGE','ADA','AVAX','LINK','MATIC','LTC','UNI','SHIB'].includes(symbol.split('-')[0]);
+          
+          if (isCrypto) {
+            // Use Yahoo Finance for crypto
+            const res = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1m&range=1d`);
+            const json = await res.json();
+            currentPrice = json?.chart?.result?.[0]?.meta?.regularMarketPrice || 0;
+          } else {
+            // Use Alpaca for stocks
+            const res = await fetch(`${SUPABASE_URL}/functions/v1/alpaca-data?symbol=${symbol}`, {
+              headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+            });
+            const json = await res.json();
+            currentPrice = json?.price || 0;
+          }
         } catch (_) {}
         
         if (!currentPrice) {
