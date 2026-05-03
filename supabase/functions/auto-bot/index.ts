@@ -1519,6 +1519,16 @@ Deno.serve(async (req) => {
           }
         }
 
+        // Final duplicate guard: check one more time before inserting
+        const { data: existingPos } = await supabase.from('trades')
+          .select('id').eq('user_id', bot.user_id as string).eq('symbol', sym)
+          .eq('source', 'auto-bot').eq('status', 'filled').is('pnl', null)
+          .limit(1).maybeSingle();
+        if (existingPos) {
+          console.log(`[AutoBot] BLOCKED duplicate: ${sym} already has open position ${existingPos.id}`);
+          return { bot_id: bot.id, symbol: sym, status: 'skipped', reason: 'Blocked duplicate at insert time' };
+        }
+
         // Insert trade into main trades table (visible on trades page)
         const { data: trade } = await supabase.from('trades').insert({
           user_id: bot.user_id,
