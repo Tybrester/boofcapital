@@ -14,7 +14,7 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    const { user_id, symbol, side, qty, notional } = await req.json();
+    const { user_id, symbol, side, qty, notional, limit_price, order_type } = await req.json();
     if (!user_id || !symbol || !side) {
       return new Response(JSON.stringify({ error: 'user_id, symbol, side are required' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -41,12 +41,17 @@ Deno.serve(async (req) => {
       : 'https://paper-api.alpaca.markets';
 
     // Build order — use notional (dollar amount) if no qty specified
+    const isLimit = order_type === 'limit' && limit_price;
     const orderBody: Record<string, unknown> = {
       symbol: symbol.toUpperCase(),
       side,           // 'buy' or 'sell'
-      type: 'market',
+      type: isLimit ? 'limit' : 'market',
       time_in_force: 'day',
     };
+
+    if (isLimit) {
+      orderBody.limit_price = String(limit_price);
+    }
 
     if (qty) {
       orderBody.qty = String(qty);

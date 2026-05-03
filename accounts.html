@@ -51,6 +51,7 @@
     .section-title { font-size: 0.72rem; font-weight: 700; color: #444; text-transform: uppercase; letter-spacing: 0.1em; margin: 28px 0 12px; }
     .broker-account-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 20px 24px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
     .broker-account-card.paper { border-color: var(--accent); background: rgba(0,230,118,0.04); }
+    .broker-account-card.connected { border-color: var(--accent); background: rgba(0,230,118,0.04); }
     .bac-name { font-size: 0.95rem; font-weight: 700; }
     .bac-type { font-size: 0.75rem; color: var(--muted); margin-top: 3px; }
     .bac-balance { text-align: right; }
@@ -274,28 +275,54 @@
                   <div class="bac-balance-label">Available Balance</div>
                   <div class="bac-balance-val">$${paperBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                 </div>
-                <button id="reset-paper-btn" style="background:transparent;border:1px solid #555;color:#888;font-size:0.75rem;padding:6px 12px;border-radius:6px;cursor:pointer;font-family:inherit;" onclick="resetPaperBalance()">Reset Paper Trading</button>
               </div>
             </div>`;
         }
         
-        // Show Tastytrade with balance
-        if (tastyCreds) {
-          html += `
-            <div class="broker-account-card">
-              <div>
-                <div class="bac-name">tastytrade</div>
-                <div class="bac-type">Live · ${tastyUsername || 'Connected'}</div>
-              </div>
-              <div class="bac-balance" style="display:flex;flex-direction:column;align-items:flex-end;">
-                <div class="bac-balance-label">Available Balance</div>
-                <div class="bac-balance-val">${tastyBalance !== null ? '$' + tastyBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}</div>
-              </div>
-            </div>`;
+        // Fetch Alpaca balance if connected
+        const { data: alpacaCreds } = await sbClient.from('broker_credentials').select('credentials').eq('user_id', user.id).eq('broker', 'alpaca').maybeSingle();
+        if (alpacaCreds?.credentials?.api_key) {
+          try {
+            const env = alpacaCreds.credentials.env || 'paper';
+            const baseUrl = env === 'live' ? 'https://api.alpaca.markets' : 'https://paper-api.alpaca.markets';
+            const acctRes = await fetch(`${baseUrl}/v2/account`, {
+              headers: { 
+                'APCA-API-KEY-ID': alpacaCreds.credentials.api_key,
+                'APCA-API-SECRET-KEY': alpacaCreds.credentials.secret_key
+              }
+            });
+            if (acctRes.ok) {
+              const acctJson = await acctRes.json();
+              const alpacaBalance = parseFloat(acctJson.cash || acctJson.buying_power || 0);
+              html += `
+                <div class="broker-account-card connected">
+                  <div>
+                    <div class="bac-name">Alpaca ${env === 'live' ? 'Live' : 'Paper'}</div>
+                    <div class="bac-type">${env === 'live' ? 'Live Trading' : 'Paper Trading'} · ${alpacaCreds.credentials.api_key.substring(0, 8)}...</div>
+                  </div>
+                  <div class="bac-balance" style="display:flex;flex-direction:column;align-items:flex-end;">
+                    <div class="bac-balance-label">Available Balance</div>
+                    <div class="bac-balance-val">$${alpacaBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                  </div>
+                </div>`;
+            }
+          } catch (e) {
+            console.log('[Accounts] Could not fetch Alpaca balance:', e);
+            html += `
+              <div class="broker-account-card connected">
+                <div>
+                  <div class="bac-name">Alpaca</div>
+                  <div class="bac-type">Connected · ${alpacaCreds.credentials.env || 'paper'}</div>
+                </div>
+                <div class="bac-balance">
+                  <div class="bac-balance-val" style="font-size:0.85rem;color:var(--muted);">Connected</div>
+                </div>
+              </div>`;
+          }
         }
         
         connectedBrokers.forEach(key => {
-          if (key === 'tastytrade') return; // Skip, already shown above
+          if (key === 'tastytrade') return;
           const label = key.charAt(0).toUpperCase() + key.slice(1);
           html += `
             <div class="broker-account-card">

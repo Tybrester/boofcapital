@@ -635,14 +635,45 @@
       if (!session) return;
 
       const systemId = document.getElementById('trades-system-filter')?.value || '';
+      
+      // Fetch stock/futures trades
       let query = sbClient.from('trades').select('*').eq('user_id', session.user.id).order('created_at', { ascending: false });
       if (systemId) query = query.eq('system_id', systemId);
       const { data: trades } = await query;
+      
+      // Fetch options trades
+      const { data: optionsTrades } = await sbClient.from('options_trades').select('*').eq('user_id', session.user.id).order('created_at', { ascending: false });
+      
+      // Normalize options trades to match format
+      const normalizedOptions = (optionsTrades || []).map(opt => ({
+        id: opt.id,
+        symbol: opt.symbol,
+        action: opt.signal === 'buy' ? 'buy' : 'sell',
+        direction: opt.option_type === 'call' ? 'Long' : 'Short',
+        quantity: opt.contracts,
+        price: opt.premium_per_contract,
+        entry_price: opt.entry_price,
+        status: opt.status === 'open' ? 'filled' : opt.status,
+        broker: 'paper',
+        source: 'options-bot',
+        created_at: opt.created_at,
+        pnl: opt.pnl,
+        exit_price: opt.exit_price,
+        strike: opt.strike,
+        expiration_date: opt.expiration_date,
+        option_type: opt.option_type,
+        isOption: true
+      }));
+      
+      // Combine all trades but EXCLUDE bot trades (only show manual/webhook/JSON alerts)
+      const allTrades = [...(trades || []), ...normalizedOptions]
+        .filter(t => t.source !== 'auto-bot' && t.source !== 'options-bot') // Filter out bot trades
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-      const pending = (trades || []).filter(t => t.status === 'open');
-      const open    = (trades || []).filter(t => t.status === 'filled');
-      const failed  = (trades || []).filter(t => t.status === 'failed');
-      const closed  = (trades || []).filter(t => t.status === 'closed');
+      const pending = allTrades.filter(t => t.status === 'open' || (t.isOption && t.status === 'filled'));
+      const open    = allTrades.filter(t => t.status === 'filled' && !t.isOption);
+      const failed  = allTrades.filter(t => t.status === 'failed');
+      const closed  = allTrades.filter(t => t.status === 'closed');
 
       const pendingEl = document.getElementById('pending-positions-container');
       const openEl    = document.getElementById('open-positions-container');
@@ -658,7 +689,7 @@
           const direction  = t.direction || (t.action === 'buy' ? 'Long' : 'Short');
           const currentPrice = await fetchPrice(t.symbol);
           return `<tr>
-            <td style="color:var(--text);font-weight:600;">${t.symbol || '—'} <span class="badge" style="font-size:0.68rem;background:rgba(255,193,7,0.12);color:#ffc107;">Pending</span></td>
+            <td style="color:var(--text);font-weight:600;">${t.symbol || '—'} ${t.source === 'auto-bot' || t.source === 'options-bot' ? '<span class="badge" style="font-size:0.68rem;background:rgba(0,230,118,0.15);color:var(--accent);">Bot</span>' : ''} <span class="badge" style="font-size:0.68rem;background:rgba(255,193,7,0.12);color:#ffc107;">Pending</span></td>
             <td><span class="badge ${direction === 'Long' ? 'badge-long' : 'badge-short'}">${direction}</span></td>
             <td style="color:var(--muted);font-size:0.78rem;text-transform:uppercase;letter-spacing:0.05em;">${detectAssetType(t.symbol, t.payload)}</td>
             <td>${t.quantity || '—'}</td>

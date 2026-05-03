@@ -364,7 +364,10 @@
 
       try {
         const res = await fetch(`${SUPABASE_URL}/functions/v1/tasty-oauth?action=login&user_id=${session.user.id}`, {
-          headers: { 'apikey': SUPABASE_ANON_KEY }
+          headers: { 
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${session.access_token}`
+          }
         });
         const json = await res.json();
         

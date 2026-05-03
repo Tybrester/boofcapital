@@ -183,7 +183,108 @@ function calcBollinger(closes: number[], period: number, stdDev: number): { uppe
   return { upper, mid, lower };
 }
 
-function generateSignalRSIMACD(candles: Candle[]): SignalResult {
+// ─────────────────────────────────────────────
+// BOOF 2.0 ML-STYLE INDICATOR
+// ─────────────────────────────────────────────
+
+interface Boof20Result {
+  predictedReturn: number;
+  signal: number;  // 1 = buy, -1 = sell, 0 = neutral
+  pastReturn: number;
+  maDiff: number;
+  rsi: number;
+  atr: number;
+}
+
+function calcBoof20(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  length = 14,
+  maFast = 5,
+  maSlow = 20,
+  volLength = 14,
+  thresholdBuy = 0.0,
+  thresholdSell = 0.0
+): Boof20Result[] {
+  const n = closes.length;
+  const result: Boof20Result[] = new Array(n).fill({ predictedReturn: 0, signal: 0, pastReturn: 0, maDiff: 0, rsi: 50, atr: 0 });
+
+  if (n < maSlow + 1) return result;
+
+  // Calculate past return (momentum)
+  const pastReturn: number[] = new Array(n).fill(0);
+  for (let i = length; i < n; i++) {
+    pastReturn[i] = (closes[i] - closes[i - length]) / closes[i - length];
+  }
+
+  // Calculate fast and slow MAs
+  const maFastVals: number[] = new Array(n).fill(NaN);
+  const maSlowVals: number[] = new Array(n).fill(NaN);
+
+  for (let i = maFast - 1; i < n; i++) {
+    const slice = closes.slice(i - maFast + 1, i + 1);
+    maFastVals[i] = slice.reduce((a, b) => a + b, 0) / maFast;
+  }
+
+  for (let i = maSlow - 1; i < n; i++) {
+    const slice = closes.slice(i - maSlow + 1, i + 1);
+    maSlowVals[i] = slice.reduce((a, b) => a + b, 0) / maSlow;
+  }
+
+  // Calculate MA difference (trend)
+  const maDiff: number[] = new Array(n).fill(0);
+  for (let i = 0; i < n; i++) {
+    if (!isNaN(maFastVals[i]) && !isNaN(maSlowVals[i])) {
+      maDiff[i] = maFastVals[i] - maSlowVals[i];
+    }
+  }
+
+  // Calculate RSI
+  const rsi = calcRSI(closes, length);
+
+  // Calculate simplified ATR (high-low range over volLength)
+  const atr: number[] = new Array(n).fill(0);
+  for (let i = volLength - 1; i < n; i++) {
+    const highSlice = highs.slice(i - volLength + 1, i + 1);
+    const lowSlice = lows.slice(i - volLength + 1, i + 1);
+    atr[i] = Math.max(...highSlice) - Math.min(...lowSlice);
+  }
+
+  // Calculate predicted return using weighted formula
+  for (let i = maSlow; i < n; i++) {
+    const rPast = pastReturn[i] || 0;
+    const rMa = maDiff[i] / closes[i] || 0;
+    const rRsi = (rsi[i] - 50) / 50 || 0;
+    const rAtr = atr[i] / closes[i] || 0;
+
+    // ML-style predicted return
+    const predictedReturn = (
+      0.4 * rPast +
+      0.3 * rMa +
+      0.2 * rRsi -
+      0.1 * rAtr
+    );
+
+    // Generate signal
+    let signal = 0;
+    if (predictedReturn > thresholdBuy) signal = 1;      // buy
+    else if (predictedReturn < thresholdSell) signal = -1;  // sell
+
+    result[i] = {
+      predictedReturn,
+      signal,
+      pastReturn: rPast,
+      maDiff: maDiff[i],
+      rsi: rsi[i],
+      atr: atr[i]
+    };
+  }
+
+  return result;
+}
+
+function generateSignalRSIMACD(candles: Candle[], tradeDirection = 'both'): SignalResult {
   const closes = candles.map(c => c.close);
   const n = closes.length;
   const i = n - 2; // last completed bar
@@ -197,8 +298,10 @@ function generateSignalRSIMACD(candles: Candle[]): SignalResult {
   const curHist  = hist[i];
   const curClose = closes[i];
 
+  // Replay state to track inLong like PineScript (exact match)
+  // Pine: if not inLong and buyCond -> inLong := true
+  //       if inLong and sellCond -> inLong := false
   let inLong = false;
-  // Replay state to determine current position (mirror Pine logic)
   for (let j = 50; j <= i; j++) {
     const r = rsi[j], h = hist[j], e = ema50[j], c = closes[j];
     if (isNaN(r) || isNaN(h) || isNaN(e)) continue;
@@ -208,63 +311,397 @@ function generateSignalRSIMACD(candles: Candle[]): SignalResult {
     if (inLong  && sellCond) inLong = false;
   }
 
-  // Check signal on bar i (what just closed)
+  // PineScript logic (exact match):
+  // buyCond = (rsi < 30 or macdHist > 0) and close > ema50
+  // sellCond = (rsi > 70 or macdHist < 0) and close < ema50
   const buyCond  = (curRSI < 30 || curHist > 0) && curClose > curEma;
   const sellCond = (curRSI > 70 || curHist < 0) && curClose < curEma;
 
   let signal: 'buy' | 'sell' | 'none' = 'none';
-  let reason = `rsi=${curRSI?.toFixed(1)}, macd_hist=${curHist?.toFixed(4)}, ema=${curEma?.toFixed(2)}, close=${curClose?.toFixed(2)}`;
+  let reason = `rsi=${curRSI?.toFixed(1)}, macd_hist=${curHist?.toFixed(4)}, ema=${curEma?.toFixed(2)}, close=${curClose?.toFixed(2)}, inLong=${inLong}`;
 
-  if (!inLong && buyCond)  { signal = 'buy';  reason = `RSI+MACD BUY. ${reason}`; }
-  if (inLong  && sellCond) { signal = 'sell'; reason = `RSI+MACD SELL. ${reason}`; }
+  // Pine: if not inLong and buyCond -> BUY
+  //       if inLong and sellCond -> SELL
+  if (!inLong && buyCond)  { signal = 'buy';  reason = `PineScript BUY. ${reason}`; }
+  if (inLong  && sellCond) { signal = 'sell'; reason = `PineScript SELL. ${reason}`; }
 
-  return { signal, price: curClose, trend: buyCond ? 1 : -1, ema: curEma, adx: curRSI, reason };
+  return { signal, price: curClose, trend: curClose > curEma ? 1 : -1, ema: curEma, adx: curRSI, reason };
+}
+
+function generateSignalBoof20(candles: Candle[], tradeDirection = 'both', thresholdBuy = 0.0, thresholdSell = 0.0): SignalResult {
+  const highs = candles.map(c => c.high);
+  const lows = candles.map(c => c.low);
+  const closes = candles.map(c => c.close);
+  const n = closes.length;
+
+  if (n < 25) {
+    return { signal: 'none', price: closes[n - 1], trend: 0, ema: closes[n - 1], adx: 50, reason: 'Insufficient data for Boof 2.0' };
+  }
+
+  const boofResults = calcBoof20(highs, lows, closes, 14, 5, 20, 14, thresholdBuy, thresholdSell);
+  const i = n - 2; // last completed bar
+  const current = boofResults[i];
+  const prev = boofResults[i - 1];
+  const curClose = closes[i];
+
+  if (!current) {
+    return { signal: 'none', price: curClose, trend: 0, ema: curClose, adx: 50, reason: 'Boof 2.0 calculation error' };
+  }
+
+  // Track position state like other strategies
+  let inLong = false;
+  for (let j = 20; j <= i; j++) {
+    if (boofResults[j].signal === 1 && !inLong) inLong = true;
+    else if (boofResults[j].signal === -1 && inLong) inLong = false;
+  }
+
+  let signal: 'buy' | 'sell' | 'none' = 'none';
+  let reason = `predicted_return=${current.predictedReturn?.toFixed(4)}, rsi=${current.rsi?.toFixed(1)}, past_ret=${current.pastReturn?.toFixed(4)}, inLong=${inLong}`;
+
+  // Generate signal based on Boof 2.0 prediction
+  if (!inLong && current.signal === 1) {
+    signal = 'buy';
+    reason = `Boof 2.0 BUY. ${reason}`;
+  } else if (inLong && current.signal === -1) {
+    signal = 'sell';
+    reason = `Boof 2.0 SELL. ${reason}`;
+  }
+
+  // Apply trade direction filter
+  if (tradeDirection === 'long' && signal === 'sell') signal = 'none';
+  if (tradeDirection === 'short' && signal === 'buy') signal = 'none';
+
+  return {
+    signal,
+    price: curClose,
+    trend: current.predictedReturn > 0 ? 1 : -1,
+    ema: closes.slice(i - 19, i + 1).reduce((a, b) => a + b, 0) / 20,
+    adx: current.rsi,
+    reason
+  };
 }
 
 // ─────────────────────────────────────────────
-// FETCH CANDLES  (Polygon.io)
+// BOOF 3.0 KMEANS REGIME DETECTION
+// ─────────────────────────────────────────────
+
+type MarketRegime = 'Trend' | 'Range' | 'HighVol';
+
+interface Boof30Result {
+  regime: MarketRegime;
+  returnStd: number;
+  maSlope: number;
+  rsi: number;
+  volumeStd: number;
+  signal: number; // 1 = buy, -1 = sell, 0 = neutral
+}
+
+// Simple KMeans implementation for 3 clusters
+function kMeansClustering(data: number[][], k: number, maxIterations = 100): { clusters: number[], centroids: number[][] } {
+  const n = data.length;
+  const dims = data[0].length;
+
+  // Initialize centroids randomly
+  const centroids: number[][] = [];
+  const usedIndices = new Set<number>();
+  for (let i = 0; i < k; i++) {
+    let idx = Math.floor(Math.random() * n);
+    while (usedIndices.has(idx)) idx = Math.floor(Math.random() * n);
+    usedIndices.add(idx);
+    centroids.push([...data[idx]]);
+  }
+
+  let clusters: number[] = new Array(n).fill(0);
+  let iterations = 0;
+  let changed = true;
+
+  while (changed && iterations < maxIterations) {
+    changed = false;
+    iterations++;
+
+    // Assign points to nearest centroid
+    for (let i = 0; i < n; i++) {
+      let minDist = Infinity;
+      let bestCluster = 0;
+      for (let j = 0; j < k; j++) {
+        const dist = euclideanDistance(data[i], centroids[j]);
+        if (dist < minDist) {
+          minDist = dist;
+          bestCluster = j;
+        }
+      }
+      if (clusters[i] !== bestCluster) {
+        clusters[i] = bestCluster;
+        changed = true;
+      }
+    }
+
+    // Update centroids
+    const newCentroids: number[][] = Array(k).fill(null).map(() => Array(dims).fill(0));
+    const counts = Array(k).fill(0);
+    for (let i = 0; i < n; i++) {
+      const c = clusters[i];
+      counts[c]++;
+      for (let d = 0; d < dims; d++) {
+        newCentroids[c][d] += data[i][d];
+      }
+    }
+    for (let j = 0; j < k; j++) {
+      if (counts[j] > 0) {
+        for (let d = 0; d < dims; d++) {
+          newCentroids[j][d] /= counts[j];
+        }
+        centroids[j] = newCentroids[j];
+      }
+    }
+  }
+
+  return { clusters, centroids };
+}
+
+function euclideanDistance(a: number[], b: number[]): number {
+  let sum = 0;
+  for (let i = 0; i < a.length; i++) {
+    sum += (a[i] - b[i]) ** 2;
+  }
+  return Math.sqrt(sum);
+}
+
+function calcBoof30(
+  candles: Candle[],
+  lookback = 14
+): Boof30Result[] {
+  const n = candles.length;
+  const result: Boof30Result[] = new Array(n).fill({
+    regime: 'Range', returnStd: 0, maSlope: 0, rsi: 50, volumeStd: 0, signal: 0
+  });
+
+  if (n < lookback + 20) return result;
+
+  const closes = candles.map(c => c.close);
+  const highs = candles.map(c => c.high);
+  const lows = candles.map(c => c.low);
+  const volumes = candles.map(c => (c as any).volume || 1000000); // Default volume if not available
+
+  // Calculate returns
+  const returns: number[] = new Array(n).fill(0);
+  for (let i = 1; i < n; i++) {
+    returns[i] = (closes[i] - closes[i - 1]) / closes[i - 1];
+  }
+
+  // Feature 1: return_std (volatility)
+  const returnStd: number[] = new Array(n).fill(0);
+  for (let i = lookback; i < n; i++) {
+    const slice = returns.slice(i - lookback + 1, i + 1);
+    const mean = slice.reduce((a, b) => a + b, 0) / lookback;
+    const variance = slice.reduce((a, b) => a + (b - mean) ** 2, 0) / lookback;
+    returnStd[i] = Math.sqrt(variance);
+  }
+
+  // Feature 2: ma_slope (trend strength)
+  const maFast: number[] = new Array(n).fill(NaN);
+  const maSlow: number[] = new Array(n).fill(NaN);
+  for (let i = 4; i < n; i++) {
+    maFast[i] = closes.slice(i - 4, i + 1).reduce((a, b) => a + b, 0) / 5;
+  }
+  for (let i = 19; i < n; i++) {
+    maSlow[i] = closes.slice(i - 19, i + 1).reduce((a, b) => a + b, 0) / 20;
+  }
+  const maSlope: number[] = new Array(n).fill(0);
+  for (let i = 0; i < n; i++) {
+    if (!isNaN(maFast[i]) && !isNaN(maSlow[i])) {
+      maSlope[i] = maFast[i] - maSlow[i];
+    }
+  }
+
+  // Feature 3: RSI
+  const rsi = calcRSI(closes, lookback);
+
+  // Feature 4: volume_std
+  const volumeStd: number[] = new Array(n).fill(0);
+  for (let i = lookback; i < n; i++) {
+    const slice = volumes.slice(i - lookback + 1, i + 1);
+    const mean = slice.reduce((a, b) => a + b, 0) / lookback;
+    const variance = slice.reduce((a, b) => a + (b - mean) ** 2, 0) / lookback;
+    volumeStd[i] = Math.sqrt(variance);
+  }
+
+  // Prepare data for clustering (only valid rows)
+  const validStart = Math.max(lookback, 20);
+  const features: number[][] = [];
+  const validIndices: number[] = [];
+
+  for (let i = validStart; i < n; i++) {
+    if (!isNaN(rsi[i])) {
+      features.push([
+        returnStd[i] * 100, // Scale up for better clustering
+        maSlope[i],
+        rsi[i],
+        volumeStd[i] / 1000000 // Scale down volume
+      ]);
+      validIndices.push(i);
+    }
+  }
+
+  if (features.length < 10) return result;
+
+  // Run KMeans clustering
+  const { clusters } = kMeansClustering(features, 3, 50);
+
+  // Map clusters to regimes based on ma_slope
+  const clusterStats: { cluster: number, avgSlope: number }[] = [];
+  for (let c = 0; c < 3; c++) {
+    const indices = validIndices.filter((_, idx) => clusters[idx] === c);
+    const avgSlope = indices.reduce((a, idx) => a + maSlope[idx], 0) / indices.length;
+    clusterStats.push({ cluster: c, avgSlope });
+  }
+
+  // Sort by ma_slope: lowest = Range, middle = HighVol, highest = Trend
+  clusterStats.sort((a, b) => a.avgSlope - b.avgSlope);
+  const regimeMap: Record<number, MarketRegime> = {
+    [clusterStats[0].cluster]: 'Range',
+    [clusterStats[1].cluster]: 'HighVol',
+    [clusterStats[2].cluster]: 'Trend'
+  };
+
+  // Assign regimes and generate signals
+  for (let idx = 0; idx < validIndices.length; idx++) {
+    const i = validIndices[idx];
+    const cluster = clusters[idx];
+    const regime = regimeMap[cluster];
+
+    // Generate signal based on regime
+    let signal = 0;
+    if (regime === 'Trend') {
+      // Trend-following: buy if slope positive, sell if negative
+      if (maSlope[i] > 0 && rsi[i] > 50) signal = 1;
+      else if (maSlope[i] < 0 && rsi[i] < 50) signal = -1;
+    } else if (regime === 'Range') {
+      // Mean reversion: buy if oversold, sell if overbought
+      if (rsi[i] < 35) signal = 1;
+      else if (rsi[i] > 65) signal = -1;
+    } else if (regime === 'HighVol') {
+      // High volatility: be cautious, use tight criteria
+      if (rsi[i] < 25 && maSlope[i] > 0) signal = 1;
+      else if (rsi[i] > 75 && maSlope[i] < 0) signal = -1;
+    }
+
+    result[i] = {
+      regime,
+      returnStd: returnStd[i],
+      maSlope: maSlope[i],
+      rsi: rsi[i],
+      volumeStd: volumeStd[i],
+      signal
+    };
+  }
+
+  return result;
+}
+
+function generateSignalBoof30(candles: Candle[], tradeDirection = 'both'): SignalResult {
+  const closes = candles.map(c => c.close);
+  const n = closes.length;
+
+  if (n < 35) {
+    return { signal: 'none', price: closes[n - 1], trend: 0, ema: closes[n - 1], adx: 50, reason: 'Insufficient data for Boof 3.0' };
+  }
+
+  const boofResults = calcBoof30(candles, 14);
+  const i = n - 2; // last completed bar
+  const current = boofResults[i];
+  const curClose = closes[i];
+
+  if (!current) {
+    return { signal: 'none', price: curClose, trend: 0, ema: curClose, adx: 50, reason: 'Boof 3.0 calculation error' };
+  }
+
+  // Track position state
+  let inLong = false;
+  for (let j = 20; j <= i; j++) {
+    if (boofResults[j].signal === 1 && !inLong) inLong = true;
+    else if (boofResults[j].signal === -1 && inLong) inLong = false;
+  }
+
+  let signal: 'buy' | 'sell' | 'none' = 'none';
+  let reason = `regime=${current.regime}, rsi=${current.rsi?.toFixed(1)}, slope=${current.maSlope?.toFixed(4)}, ret_std=${current.returnStd?.toFixed(4)}, inLong=${inLong}`;
+
+  // Generate signal based on regime and conditions
+  if (!inLong && current.signal === 1) {
+    signal = 'buy';
+    reason = `Boof 3.0 BUY [${current.regime}]. ${reason}`;
+  } else if (inLong && current.signal === -1) {
+    signal = 'sell';
+    reason = `Boof 3.0 SELL [${current.regime}]. ${reason}`;
+  } else {
+    reason = `Boof 3.0 NONE [${current.regime}]. ${reason}`;
+  }
+
+  // Apply trade direction filter
+  if (tradeDirection === 'long' && signal === 'sell') signal = 'none';
+  if (tradeDirection === 'short' && signal === 'buy') signal = 'none';
+
+  return {
+    signal,
+    price: curClose,
+    trend: current.maSlope > 0 ? 1 : -1,
+    ema: closes.slice(i - 19, i + 1).reduce((a, b) => a + b, 0) / 20,
+    adx: current.rsi,
+    reason
+  };
+}
+
+// ─────────────────────────────────────────────
+// FETCH CANDLES (Alpaca Data - Live)
 // ─────────────────────────────────────────────
 
 interface Candle { time: number; open: number; high: number; low: number; close: number; }
 
-async function fetchCandles(symbol: string, interval = '1h', bars = 150): Promise<Candle[]> {
-  const POLYGON_KEY = Deno.env.get('POLYGON_API_KEY')!;
-
-  // Map interval to Polygon multiplier/timespan
-  const intervalMap: Record<string, { multiplier: number; timespan: string; days: number }> = {
-    '1m':  { multiplier: 1,  timespan: 'minute', days: 5   },
-    '5m':  { multiplier: 5,  timespan: 'minute', days: 10  },
-    '10m': { multiplier: 10, timespan: 'minute', days: 15  },
-    '15m': { multiplier: 15, timespan: 'minute', days: 20  },
-    '30m': { multiplier: 30, timespan: 'minute', days: 30  },
-    '45m': { multiplier: 45, timespan: 'minute', days: 45  },
-    '1h':  { multiplier: 1,  timespan: 'hour',   days: 60  },
-    '2h':  { multiplier: 2,  timespan: 'hour',   days: 120 },
-    '4h':  { multiplier: 4,  timespan: 'hour',   days: 180 },
-    '1d':  { multiplier: 1,  timespan: 'day',    days: 365 },
-  };
-  const { multiplier, timespan, days } = intervalMap[interval] ?? intervalMap['1h'];
-
-  // Polygon uses X: prefix for crypto, plain ticker for stocks
-  const isCrypto = symbol.endsWith('-USD');
-  const polygonTicker = isCrypto
-    ? 'X:' + symbol.replace('-USD', 'USD')
-    : symbol.replace('.', '-'); // handle BRK.B → BRK-B (already correct)
-
-  const to   = new Date();
-  const from = new Date(to.getTime() - days * 24 * 60 * 60 * 1000);
-  const fromStr = from.toISOString().split('T')[0];
-  const toStr   = to.toISOString().split('T')[0];
-
-  const url = `https://api.polygon.io/v2/aggs/ticker/${polygonTicker}/range/${multiplier}/${timespan}/${fromStr}/${toStr}?adjusted=true&sort=asc&limit=50000&apiKey=${POLYGON_KEY}`;
-  const res = await fetch(url);
-  const json = await res.json();
-
-  if (!json.results || json.results.length === 0) throw new Error(`No Polygon data for ${symbol} (${json.status}: ${json.error ?? ''})`);
-
-  const candles: Candle[] = json.results.map((r: { t: number; o: number; h: number; l: number; c: number }) => ({
-    time: r.t, open: r.o, high: r.h, low: r.l, close: r.c,
+async function fetchCandles(symbol: string, interval = '1h', bars = 150, userId?: string): Promise<Candle[]> {
+  // Use Alpaca data API for live market data
+  const alpacaUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/alpaca-data`;
+  
+  const res = await fetch(alpacaUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+    },
+    body: JSON.stringify({
+      user_id: userId || 'anonymous',
+      symbol: symbol,
+      interval: interval,
+      bars: bars,
+      type: 'candles'
+    })
+  });
+  
+  if (!res.ok) {
+    const error = await res.text();
+    console.error(`[AutoBot] Alpaca data error for ${symbol}: ${error}`);
+    throw new Error(`Alpaca data failed for ${symbol}: ${error}. Check your Alpaca credentials.`);
+  }
+  
+  const data = await res.json();
+  
+  if (!data.candles || data.candles.length < 10) {
+    throw new Error(`Insufficient Alpaca data for ${symbol} (got ${data.candles?.length || 0} bars)`);
+  }
+  
+  const candles: Candle[] = data.candles.map((c: any) => ({
+    time: c.time,
+    open: c.open,
+    high: c.high,
+    low: c.low,
+    close: c.close,
   }));
+  
+  console.log(`[AutoBot] Fetched ${candles.length} candles for ${symbol} from Alpaca`);
+  
+  if (candles.length < 60) {
+    throw new Error(`Not enough data for ${symbol} (got ${candles.length} candles)`);
+  }
+  
   return candles.slice(-bars);
 }
 
@@ -286,37 +723,87 @@ function generateSignal(candles: Candle[], settings: BotSettings): SignalResult 
   const lows   = candles.map(c => c.low);
   const closes = candles.map(c => c.close);
   const n = closes.length;
+  const tradeDirection = settings.tradeDirection || 'both';
 
-  const emaArr = calcEMA(closes, settings.emaLength);
-  const { trend } = calcSuperTrend(highs, lows, closes, settings.atrLength, settings.atrMultiplier);
-  const { adx } = calcDMI(highs, lows, closes, settings.adxLength);
+  // Calculate EMA50
+  const emaArr = calcEMA(closes, 50);
 
-  // Current (last completed bar = n-2, n-1 is the forming bar)
-  const i = n - 2;
-  const prevTrend = trend[i - 1];
-  const curTrend  = trend[i];
-  const curEma    = emaArr[i];
-  const curAdx    = adx[i];
-  const curClose  = closes[i];
+  // Calculate Supertrend components
+  const atrPeriod = 10;
+  const stMultiplier = 3;
+  const hl2 = highs.map((h, i) => (h + lows[i]) / 2);
+  const atr = calcATR(highs, lows, closes, atrPeriod);
 
-  const longOK  = curTrend === 1  && curClose > curEma && curAdx > settings.adxThreshold;
-  const shortOK = curTrend === -1 && curClose < curEma && curAdx > settings.adxThreshold;
+  // Calculate Supertrend upper and lower bands
+  const stUpper: number[] = new Array(n).fill(NaN);
+  const stLower: number[] = new Array(n).fill(NaN);
+  const supertrend: number[] = new Array(n).fill(0);
 
-  // Only signal on NEW trend crossover (trend just changed this bar)
-  const trendJustFlipped = curTrend !== prevTrend;
+  for (let i = atrPeriod; i < n; i++) {
+    stUpper[i] = hl2[i] + stMultiplier * atr[i];
+    stLower[i] = hl2[i] - stMultiplier * atr[i];
 
-  let signal: 'buy' | 'sell' | 'none' = 'none';
-  let reason = `trend=${curTrend}, close=${curClose.toFixed(2)}, ema=${curEma.toFixed(2)}, adx=${curAdx?.toFixed(1)}`;
-
-  if (trendJustFlipped && longOK) {
-    signal = 'buy';
-    reason = `SuperTrend flipped UP. ${reason}`;
-  } else if (trendJustFlipped && shortOK) {
-    signal = 'sell';
-    reason = `SuperTrend flipped DOWN. ${reason}`;
+    // Initialize Supertrend
+    if (i === atrPeriod) {
+      supertrend[i] = closes[i - 1] <= stUpper[i - 1] ? stUpper[i] : stLower[i];
+    } else {
+      // Update Supertrend
+      if (closes[i - 1] <= stUpper[i - 1]) {
+        supertrend[i] = stUpper[i];
+      } else {
+        supertrend[i] = stLower[i];
+      }
+    }
   }
 
-  return { signal, price: curClose, trend: curTrend, ema: curEma, adx: curAdx, reason };
+  // Calculate ADX (14-period)
+  const { adx } = calcDMI(highs, lows, closes, 14);
+
+  // Current bar (last completed)
+  const i = n - 2;
+  const curClose = closes[i];
+  const curEma = emaArr[i];
+  const curSupertrend = supertrend[i];
+  const curAdx = adx[i];
+
+  const adxThreshold = 25;
+
+  // Signal logic matching Python: close > EMA50, close > Supertrend, ADX > 25
+  const longOK = curClose > curEma && curClose > curSupertrend && curAdx > adxThreshold;
+  const shortOK = curClose < curEma && curClose < curSupertrend && curAdx > adxThreshold;
+
+  // Replay state to track position
+  let inLong = false;
+  for (let j = 50; j < i; j++) {
+    const longCond = closes[j] > emaArr[j] && closes[j] > supertrend[j] && adx[j] > adxThreshold;
+    const shortCond = closes[j] < emaArr[j] && closes[j] < supertrend[j] && adx[j] > adxThreshold;
+    if (longCond && !inLong) inLong = true;
+    else if (shortCond && inLong) inLong = false;
+  }
+
+  let signal: 'buy' | 'sell' | 'none' = 'none';
+  let reason = `close=${curClose.toFixed(2)}, ema50=${curEma?.toFixed(2)}, supertrend=${curSupertrend?.toFixed(2)}, adx=${curAdx?.toFixed(1)}, inLong=${inLong}`;
+
+  if (!inLong && longOK) {
+    signal = 'buy';
+    reason = `Boof 1.0 BUY. ${reason}`;
+  } else if (inLong && shortOK) {
+    signal = 'sell';
+    reason = `Boof 1.0 SELL. ${reason}`;
+  }
+
+  // Apply trade direction filter
+  if (tradeDirection === 'long' && signal === 'sell') signal = 'none';
+  if (tradeDirection === 'short' && signal === 'buy') signal = 'none';
+
+  return {
+    signal,
+    price: curClose,
+    trend: curClose > curEma ? 1 : -1,
+    ema: curEma,
+    adx: curAdx,
+    reason
+  };
 }
 
 // ─────────────────────────────────────────────
@@ -437,7 +924,7 @@ Deno.serve(async (req) => {
     const botId = url.searchParams.get('bot_id');
     if (!botId) return new Response(JSON.stringify({ error: 'bot_id required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
-    const { data: bot } = await supabaseGET.from('stock_bots').select('paper_balance').eq('id', botId).single();
+    const { data: bot } = await supabaseGET.from('stock_bots').select('paper_balance, user_id').eq('id', botId).single();
     const cash = Number(bot?.paper_balance ?? 100000);
 
     // Fetch open (filled, no pnl) trades
@@ -446,7 +933,7 @@ Deno.serve(async (req) => {
     if (openTrades && openTrades.length > 0) {
       for (const t of openTrades) {
         try {
-          const candles = await fetchCandles(t.symbol, '1h', 5);
+          const candles = await fetchCandles(t.symbol, '1h', 5, bot?.user_id as string);
           const price = candles.length ? candles[candles.length - 1].close : Number(t.price);
           openValue += price * Number(t.quantity);
         } catch (_) { openValue += Number(t.price) * Number(t.quantity); }
@@ -582,14 +1069,23 @@ Deno.serve(async (req) => {
     // ── Per-symbol processing helper ─────────────────────────────────────────
     async function processSymbol(bot: Record<string,unknown>, sym: string, settings: BotSettings): Promise<object> {
       try {
-        const candles = await fetchCandles(sym, settings.interval, 150);
+        const candles = await fetchCandles(sym, settings.interval, 150, bot.user_id as string);
         if (candles.length < 60) return { bot_id: bot.id, symbol: sym, status: 'skipped', reason: 'Not enough candle data' };
 
         const overrideSettings = { ...settings, symbol: sym };
         const botSignal = (bot.bot_signal as string) || 'supertrend';
-        const { signal, price, trend, ema, adx, reason } = botSignal === 'rsi_macd'
-          ? generateSignalRSIMACD(candles)
-          : generateSignal(candles, overrideSettings);
+        const tradeDirection = settings.tradeDirection || 'both';
+        let signalResult: SignalResult;
+        if (botSignal === 'rsi_macd') {
+          signalResult = generateSignalRSIMACD(candles, tradeDirection);
+        } else if (botSignal === 'boof20') {
+          signalResult = generateSignalBoof20(candles, tradeDirection, 0.0, 0.0);
+        } else if (botSignal === 'boof30') {
+          signalResult = generateSignalBoof30(candles, tradeDirection);
+        } else {
+          signalResult = generateSignal(candles, overrideSettings);
+        }
+        const { signal, price, trend, ema, adx, reason } = signalResult;
         console.log(`[AutoBot] ${sym} → ${signal} | ${reason}`);
 
         if (signal === 'buy'  && settings.tradeDirection === 'short') return { bot_id: bot.id, symbol: sym, status: 'skipped', reason: 'Direction: short only' };
@@ -600,11 +1096,143 @@ Deno.serve(async (req) => {
           return { bot_id: bot.id, symbol: sym, status: 'no_signal', reason };
         }
 
-        // Duplicate check per symbol
-        const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-        const { data: recentTrades } = await supabase.from('stock_trades').select('action').eq('bot_id', bot.id as string).eq('user_id', bot.user_id as string).eq('symbol', sym).gte('created_at', twoHoursAgo).order('created_at', { ascending: false }).limit(1);
-        if (recentTrades && recentTrades.length > 0 && recentTrades[0].action === signal) {
-          return { bot_id: bot.id, symbol: sym, status: 'skipped', reason: `Duplicate ${signal} within 2h` };
+        // Trend Filter: Check higher timeframe trend
+        const trendFilter = bot.trend_filter as string || 'none';
+        if (trendFilter !== 'none') {
+          try {
+            const higherTfCandles = await fetchCandles(sym, trendFilter, 100, bot.user_id as string);
+            if (higherTfCandles.length >= 50) {
+              const higherTfCloses = higherTfCandles.map(c => c.close);
+              const higherTfEma = calcEMA(higherTfCloses, 20);
+              const currentPrice = higherTfCloses[higherTfCloses.length - 1];
+              const higherTfEmaVal = higherTfEma[higherTfEma.length - 1];
+              
+              // Higher timeframe trend: price above EMA = uptrend, below = downtrend
+              const higherTfTrend = currentPrice > higherTfEmaVal ? 'up' : 'down';
+              
+              // Filter signal: Only trade if aligned with higher timeframe
+              if (signal === 'buy' && higherTfTrend === 'down') {
+                console.log(`[AutoBot] ${sym} BUY blocked - ${trendFilter} trend is DOWN (price ${currentPrice.toFixed(2)} < EMA ${higherTfEmaVal.toFixed(2)})`);
+                return { bot_id: bot.id, symbol: sym, status: 'skipped', reason: `BUY blocked: ${trendFilter} trend is DOWN` };
+              }
+              if (signal === 'sell' && higherTfTrend === 'up') {
+                console.log(`[AutoBot] ${sym} SELL blocked - ${trendFilter} trend is UP (price ${currentPrice.toFixed(2)} > EMA ${higherTfEmaVal.toFixed(2)})`);
+                return { bot_id: bot.id, symbol: sym, status: 'skipped', reason: `SELL blocked: ${trendFilter} trend is UP` };
+              }
+              console.log(`[AutoBot] ${sym} ${signal} approved - ${trendFilter} trend aligned (${higherTfTrend})`);
+            }
+          } catch (e) {
+            console.log(`[AutoBot] ${sym} trend filter error: ${e}`);
+          }
+        }
+
+        // Check for duplicate trade within 1 minute (race condition prevention)
+        const oneMinuteAgo = new Date(Date.now() - 60 * 1000).toISOString();
+        const { data: recentTrade } = await supabase.from('trades')
+          .select('id, action').eq('bot_id', bot.id as string).eq('symbol', sym)
+          .eq('source', 'auto-bot').gte('created_at', oneMinuteAgo)
+          .limit(1).maybeSingle();
+        if (recentTrade) {
+          return { bot_id: bot.id, symbol: sym, status: 'skipped', reason: `Duplicate ${recentTrade.action} trade within 1 minute` };
+        }
+
+        // Check for existing open position on this symbol for this bot
+        const { data: openTrade } = await supabase.from('trades')
+          .select('*').eq('bot_id', bot.id as string).eq('symbol', sym)
+          .eq('source', 'auto-bot').eq('status', 'filled').is('pnl', null)
+          .order('created_at', { ascending: false }).limit(1).maybeSingle();
+
+        if (openTrade) {
+          if (openTrade.action === signal) {
+            // Same direction already open - skip
+            return { bot_id: bot.id, symbol: sym, status: 'skipped', reason: `Already in ${signal} position` };
+          }
+          // Opposite signal - close the open trade with P&L
+          const entryPrice = Number(openTrade.entry_price || openTrade.price);
+          const qty = Number(openTrade.quantity);
+          const pnl = openTrade.action === 'buy'
+            ? (price - entryPrice) * qty
+            : (entryPrice - price) * qty;
+          await supabase.from('trades').update({
+            status: 'closed',
+            exit_price: price,
+            pnl: pnl,
+            closed_at: new Date().toISOString(),
+          }).eq('id', openTrade.id);
+          console.log(`[AutoBot] Closed ${openTrade.action} on ${sym} | P&L: $${pnl.toFixed(2)}`);
+        }
+
+        // Check for pending limit orders from previous runs - convert to market if signal still valid
+        const { data: pendingLimit } = await supabase.from('trades')
+          .select('*').eq('bot_id', bot.id as string).eq('symbol', sym)
+          .eq('source', 'auto-bot').eq('status', 'pending').eq('order_type', 'limit')
+          .order('created_at', { ascending: false }).limit(1).maybeSingle();
+        
+        if (pendingLimit) {
+          const limitPrice = Number(pendingLimit.price);
+          const entryPrice = Number(pendingLimit.entry_price);
+          const isBuy = pendingLimit.action === 'buy';
+          const filled = isBuy ? price <= limitPrice : price >= limitPrice;
+          
+          // Max drawdown protection: Don't buy if stock dropped too much from original signal
+          const maxDrawdownPct = Number(bot.limit_drawdown_pct) || 2.0; // Use bot setting or default 2%
+          const drawdown = isBuy 
+            ? ((entryPrice - price) / entryPrice) * 100  // How much it dropped
+            : ((price - entryPrice) / entryPrice) * 100; // How much it rose (for shorts)
+          
+          if (drawdown > maxDrawdownPct) {
+            // Stock moved too far against us - cancel limit order
+            await supabase.from('trades').update({ 
+              status: 'cancelled',
+              reason: `Cancelled: ${drawdown.toFixed(2)}% drawdown exceeded ${maxDrawdownPct}% max`
+            }).eq('id', pendingLimit.id);
+            console.log(`[AutoBot] Cancelled limit for ${sym} - ${drawdown.toFixed(2)}% drawdown, signal price ${entryPrice}, current ${price}`);
+            return { bot_id: bot.id, symbol: sym, status: 'cancelled', reason: 'Max drawdown exceeded' };
+          }
+          
+          // Check time limit
+          const limitTimeMin = Number(bot.limit_time_min) || 2;
+          const orderAgeMs = Date.now() - new Date(pendingLimit.created_at).getTime();
+          const orderAgeMin = orderAgeMs / (1000 * 60);
+          const timeLimitExceeded = orderAgeMin >= limitTimeMin;
+          
+          if (filled) {
+            // Limit order would have filled - update to filled status
+            await supabase.from('trades').update({
+              status: 'filled',
+              filled_at: new Date().toISOString(),
+            }).eq('id', pendingLimit.id);
+            console.log(`[AutoBot] Limit order filled for ${sym} at ~${limitPrice}`);
+            return { bot_id: bot.id, symbol: sym, status: 'filled', signal, price: limitPrice, quantity: pendingLimit.quantity };
+          } else if (signal === pendingLimit.action && timeLimitExceeded) {
+            // Time limit exceeded - convert to market order
+            await supabase.from('trades').update({
+              order_type: 'market',
+              price: price,
+              entry_price: price,
+              status: 'filled',
+              filled_at: new Date().toISOString(),
+            }).eq('id', pendingLimit.id);
+            console.log(`[AutoBot] Time limit (${limitTimeMin}min) exceeded - converted limit to market for ${sym} at ${price}`);
+            return { bot_id: bot.id, symbol: sym, status: 'filled', signal, price, quantity: pendingLimit.quantity };
+          } else if (signal !== pendingLimit.action) {
+            // Signal reversed - cancel the limit order
+            await supabase.from('trades').update({ status: 'cancelled' }).eq('id', pendingLimit.id);
+            console.log(`[AutoBot] Cancelled limit order for ${sym} - signal reversed`);
+          } else {
+            // Still waiting - signal valid but limit not hit and time not exceeded
+            console.log(`[AutoBot] Limit order pending for ${sym} at ${limitPrice} (current ${price}, ${orderAgeMin.toFixed(1)}min/${limitTimeMin}min)`);
+            return { bot_id: bot.id, symbol: sym, status: 'pending', reason: `Limit pending ${orderAgeMin.toFixed(1)}min/${limitTimeMin}min` };
+          }
+        }
+
+        // Double-check no open position (race condition prevention)
+        const { data: stillOpen } = await supabase.from('trades')
+          .select('id').eq('bot_id', bot.id as string).eq('symbol', sym)
+          .eq('source', 'auto-bot').eq('status', 'filled').is('pnl', null)
+          .limit(1);
+        if (stillOpen && stillOpen.length > 0) {
+          return { bot_id: bot.id, symbol: sym, status: 'skipped', reason: 'Position already opened by parallel process' };
         }
 
         let orderId: string | undefined;
@@ -623,50 +1251,174 @@ Deno.serve(async (req) => {
             console.error('[AutoBot] Tastytrade error:', brokerError);
           }
         } else if (bot.broker === 'alpaca') {
-          try {
-            const alpacaRes = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/alpaca-order`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
-              },
-              body: JSON.stringify({
-                user_id: bot.user_id,
-                symbol: sym,
-                side: signal === 'buy' ? 'buy' : 'sell',
-                notional: settings.dollarAmount,
-              }),
+          const useLimitOrders = bot.use_limit_orders || false;
+          const limitOffsetPct = bot.limit_offset_pct || 0.5;
+          
+          if (useLimitOrders && signal === 'buy') {
+            // Place limit order at better price
+            const limitPrice = price * (1 - Number(limitOffsetPct) / 100);
+            
+            // Insert as pending limit order
+            await supabase.from('trades').insert({
+              user_id: bot.user_id,
+              bot_id: bot.id,
+              symbol: sym,
+              action: signal,
+              direction: 'Long',
+              quantity: quantity,
+              price: limitPrice,
+              entry_price: price,  // Store original signal price for drawdown calc
+              order_type: 'limit',
+              broker: 'alpaca',
+              source: 'auto-bot',
+              status: 'pending',
+              created_at: new Date().toISOString(),
             });
-            const alpacaJson = await alpacaRes.json();
-            if (!alpacaRes.ok || alpacaJson.error) throw new Error(alpacaJson.error || 'Alpaca order failed');
-            orderId = alpacaJson.order_id;
-            tradeStatus = 'filled';
-          } catch (e) {
-            brokerError = String(e);
-            tradeStatus = 'failed';
-            console.error('[AutoBot] Alpaca error:', brokerError);
+            
+            console.log(`[AutoBot] Alpaca limit order placed: ${sym} at $${limitPrice.toFixed(2)} (current $${price.toFixed(2)}, offset -${limitOffsetPct}%)`);
+            return { bot_id: bot.id, symbol: sym, status: 'pending', signal, price: limitPrice, quantity, order_type: 'limit' };
+          } else {
+            // Market order
+            try {
+              const alpacaRes = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/alpaca-order`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+                },
+                body: JSON.stringify({
+                  user_id: bot.user_id,
+                  symbol: sym,
+                  side: signal === 'buy' ? 'buy' : 'sell',
+                  notional: settings.dollarAmount,
+                }),
+              });
+              const alpacaJson = await alpacaRes.json();
+              if (!alpacaRes.ok || alpacaJson.error) throw new Error(alpacaJson.error || 'Alpaca order failed');
+              orderId = alpacaJson.order_id;
+              tradeStatus = 'filled';
+            } catch (e) {
+              brokerError = String(e);
+              tradeStatus = 'failed';
+              console.error('[AutoBot] Alpaca error:', brokerError);
+            }
           }
         } else {
-          // Paper trading: update virtual balance
-          const tradeValue = quantity * price;
-          const { data: botRow } = await supabase.from('stock_bots').select('paper_balance').eq('id', bot.id as string).single();
-          const currentBalance = Number(botRow?.paper_balance ?? 100000);
-          const newBalance = signal === 'buy'
-            ? currentBalance - tradeValue
-            : currentBalance + tradeValue;
-          await supabase.from('stock_bots').update({ paper_balance: Math.max(0, newBalance) }).eq('id', bot.id as string);
+          // Paper trading: check if we should use limit orders
+          const useLimitOrders = bot.use_limit_orders || false;
+          const limitOffsetPct = bot.limit_offset_pct || 0.5; // Default 0.5% better price
+          
+          if (useLimitOrders && signal === 'buy') {
+            // Place limit order at better price (below current for buys)
+            const limitPrice = price * (1 - Number(limitOffsetPct) / 100);
+            
+            // Insert as pending limit order
+            await supabase.from('trades').insert({
+              user_id: bot.user_id,
+              bot_id: bot.id,
+              symbol: sym,
+              action: signal,
+              direction: 'Long',
+              quantity: quantity,
+              price: limitPrice,
+              entry_price: limitPrice,
+              order_type: 'limit',
+              broker: 'paper',
+              source: 'auto-bot',
+              status: 'pending',
+              created_at: new Date().toISOString(),
+            });
+            
+            console.log(`[AutoBot] Paper limit order placed: ${sym} at $${limitPrice.toFixed(2)} (current $${price.toFixed(2)}, offset -${limitOffsetPct}%)`);
+            return { bot_id: bot.id, symbol: sym, status: 'pending', signal, price: limitPrice, quantity, order_type: 'limit' };
+          } else {
+            // Market order (existing behavior)
+            const tradeValue = quantity * price;
+            const { data: botRow } = await supabase.from('stock_bots').select('paper_balance').eq('id', bot.id as string).single();
+            const currentBalance = Number(botRow?.paper_balance ?? 100000);
+            const newBalance = signal === 'buy'
+              ? currentBalance - tradeValue
+              : currentBalance + tradeValue;
+            await supabase.from('stock_bots').update({ paper_balance: Math.max(0, newBalance) }).eq('id', bot.id as string);
+          }
         }
 
-        const { data: trade } = await supabase.from('stock_trades').insert({
-          user_id: bot.user_id, bot_id: bot.id, symbol: sym, action: signal,
-          quantity, price, order_type: 'market', broker: bot.broker || 'paper', source: 'auto',
-          status: tradeStatus, broker_order_id: orderId || null, broker_error: brokerError || null,
+        // Insert trade into main trades table (visible on trades page)
+        const { data: trade } = await supabase.from('trades').insert({
+          user_id: bot.user_id,
+          bot_id: bot.id,
+          symbol: sym,
+          action: signal,
+          direction: signal === 'buy' ? 'Long' : 'Short',
+          quantity: quantity,
+          price: price,
+          entry_price: price,
+          order_type: 'market',
+          broker: bot.broker || 'paper',
+          source: 'auto-bot',
+          status: tradeStatus === 'filled' ? 'filled' : 'pending',
           filled_at: tradeStatus === 'filled' ? new Date().toISOString() : null,
-          payload: { source: 'auto-bot', scan_mode: bot.bot_scan_mode, reason, trend, ema: ema?.toFixed(2), adx: adx?.toFixed(1) },
           created_at: new Date().toISOString(),
         }).select().single();
 
         await supabase.from('stock_bot_logs').insert({ bot_id: bot.id, user_id: bot.user_id, symbol: sym, signal, price, trend, ema, adx, reason, trade_id: trade?.id || null, created_at: new Date().toISOString() });
+
+        // Trigger options bot ONLY after stock order is FILLED (not pending)
+        // This ensures options don't trade unless stock actually fills
+        if (tradeStatus === 'filled' && trade?.id) {
+          try {
+            // Get enabled options bots and their scan lists (with interval for matching)
+            const { data: optsBots } = await supabase.from('options_bots')
+              .select('id, bot_scan_mode, bot_symbol, bot_interval')
+              .eq('user_id', bot.user_id)
+              .eq('enabled', true)
+              .eq('auto_submit', true);
+            
+            // Check if any options bot scans this symbol AND has matching interval
+            const stockInterval = bot.bot_interval || '1h';
+            const scansSymbol = optsBots?.some(ob => {
+              // Only sync if intervals match (e.g., 5min stock → 5min options)
+              const optsInterval = ob.bot_interval || '1h';
+              if (optsInterval !== stockInterval) {
+                console.log(`[AutoBot] Skipping options bot "${ob.id}" - interval mismatch (stock=${stockInterval}, options=${optsInterval})`);
+                return false;
+              }
+              if (ob.bot_scan_mode === 'single') return ob.bot_symbol === sym;
+              if (ob.bot_scan_mode === 'scan_stocks') {
+                const SCAN_STOCKS = ['AAPL','MSFT','AMZN','NVDA','TSLA','GOOG','GOOGL','META','NFLX','BRK-B','JPM','BAC','WFC','V','MA','PG','KO','PFE','UNH','HD','INTC','CSCO','ADBE','CRM','ORCL','AMD','QCOM','TXN','IBM','AVGO','XOM','CVX','BA','CAT','MMM','GE','HON','LMT','NOC','DE','C','GS','MS','AXP','BLK','SCHW','BK','SPGI','ICE','MRK','ABBV','AMGN','BMY','LLY','GILD','JNJ','REGN','VRTX','BIIB','WMT','COST','TGT','LOW','MCD','SBUX','NKE','BKNG','SNAP','UBER','LYFT','SPOT','ZM','DOCU','PINS','ROKU','SHOP','CVS','TMO','MDT','ISRG','F','GM','SNOW','CRWD','NET','DDOG','MDB','OKTA','SPLK','FSLR','ENPH','SEDG','DKNG','CHPT','LCID','RIVN','HOOD','SOFI','AI','PLTR','ASML','MU','LRCX','KLAC','AMAT','MRVL','NXPI','CDNS','SNPS','ANET','FTNT','PANW','GME','AMC','BBBY','EXPR','KOSS','NAKD','SNDL','TLRY','ACB','CGC','QQQ','SPY','VOO','IVV','VTI','VUG','QQQM','SCHG','XLK','VGT','SMH','TQQQ'];
+                return SCAN_STOCKS.includes(sym);
+              }
+              if (ob.bot_scan_mode === 'scan_etfs') return ['QQQ','SPY','VOO','IVV','VTI','VUG','QQQM','SCHG','XLK','VGT','SMH','TQQQ'].includes(sym);
+              if (ob.bot_scan_mode === 'scan_top10') return ['SMCI','TSLA','NVDA','COIN','PLTR','AMD','MRNA','MSTY','ENPH','VKTX','CCL'].includes(sym);
+              return false;
+            });
+            
+            if (scansSymbol) {
+              const optionsBotUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/options-bot`;
+              fetch(optionsBotUrl, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+                },
+                body: JSON.stringify({
+                  user_id: bot.user_id,
+                  symbol: sym,
+                  signal: signal,
+                  trigger_source: 'auto-bot-sync',
+                  price: price,
+                  stock_trade_id: trade.id, // Pass stock trade ID for tracking
+                  stock_trade_status: tradeStatus, // 'filled' or 'pending'
+                }),
+              }).catch(() => {}); // Fire and forget, don't wait
+              console.log(`[AutoBot] Triggered options-bot for ${sym} ${signal} (stock ${tradeStatus}, symbol in scan list)`);
+            } else {
+              console.log(`[AutoBot] Skipped options trigger - ${sym} not in any options bot scan list`);
+            }
+          } catch (_) { /* ignore trigger errors */ }
+        } else {
+          console.log(`[AutoBot] Skipped options trigger - stock order failed or no trade ID`);
+        }
 
         return { bot_id: bot.id, status: tradeStatus, signal, symbol: sym, price, quantity, order_id: orderId, reason, broker_error: brokerError };
       } catch (err) {
@@ -709,47 +1461,39 @@ Deno.serve(async (req) => {
         tradeDirection: bot.bot_trade_direction ?? bot.trade_direction ?? 'both',
       };
 
-      const scanModeValue: string = (bot.bot_scan_mode as string) || 'single';
-      const scanModes = scanModeValue.split(',').map(m => m.trim()).filter(m => m);
+      // New multi-select scan markets
+      const scanStocks = bot.scan_stocks || false;
+      const scanCrypto = bot.scan_crypto || false;
+      const scanFutures = bot.scan_futures || false;
       
       // Check if bot is trading stocks after hours
-      const tradingStocks = scanModes.some(m => m === 'scan_stocks' || m === 'single' || m === 'scan_all');
-      if (tradingStocks && !isStockMarketHours) {
+      if (scanStocks && !isStockMarketHours) {
         console.log(`[AutoBot] Skipping "${bot.name}" - stock markets closed (${etNow.toLocaleTimeString('en-US', {timeZone: 'America/New_York'})} ET)`);
         continue;
       }
       
-      console.log(`[AutoBot] Running "${bot.name}" | modes=${scanModes.join('+')} | ${settings.interval} | interval=${runIntervalMin}m`);
+      console.log(`[AutoBot] Running "${bot.name}" | stocks=${scanStocks}, crypto=${scanCrypto}, futures=${scanFutures} | ${settings.interval} | interval=${runIntervalMin}m`);
 
       try {
-        for (const scanMode of scanModes) {
-          if (scanMode === 'scan_stocks') {
-            for (let i = 0; i < SCAN_STOCKS.length; i += 10) {
-              const batch = SCAN_STOCKS.slice(i, i + 10);
-              const batchResults = await Promise.all(batch.map(sym => processSymbol(bot, sym, settings)));
-              results.push(...batchResults);
-            }
-          } else if (scanMode === 'scan_crypto') {
-            for (let i = 0; i < SCAN_CRYPTO.length; i += 10) {
-              const batch = SCAN_CRYPTO.slice(i, i + 10);
-              const batchResults = await Promise.all(batch.map(sym => processSymbol(bot, sym, settings)));
-              results.push(...batchResults);
-            }
-          } else if (scanMode === 'scan_all') {
-            for (let i = 0; i < SCAN_ALL.length; i += 10) {
-              const batch = SCAN_ALL.slice(i, i + 10);
-              const batchResults = await Promise.all(batch.map(sym => processSymbol(bot, sym, settings)));
-              results.push(...batchResults);
-            }
-          } else if (scanMode === 'scan_futures') {
-            for (let i = 0; i < SCAN_FUTURES.length; i += 10) {
-              const batch = SCAN_FUTURES.slice(i, i + 10);
-              const batchResults = await Promise.all(batch.map(sym => processSymbol(bot, sym, settings)));
-              results.push(...batchResults);
-            }
-          } else if (scanMode === 'single') {
-            const r = await processSymbol(bot, settings.symbol, settings);
-            results.push(r);
+        if (scanStocks) {
+          for (let i = 0; i < SCAN_STOCKS.length; i += 10) {
+            const batch = SCAN_STOCKS.slice(i, i + 10);
+            const batchResults = await Promise.all(batch.map(sym => processSymbol(bot, sym, settings)));
+            results.push(...batchResults);
+          }
+        }
+        if (scanCrypto) {
+          for (let i = 0; i < SCAN_CRYPTO.length; i += 10) {
+            const batch = SCAN_CRYPTO.slice(i, i + 10);
+            const batchResults = await Promise.all(batch.map(sym => processSymbol(bot, sym, settings)));
+            results.push(...batchResults);
+          }
+        }
+        if (scanFutures) {
+          for (let i = 0; i < SCAN_FUTURES.length; i += 10) {
+            const batch = SCAN_FUTURES.slice(i, i + 10);
+            const batchResults = await Promise.all(batch.map(sym => processSymbol(bot, sym, settings)));
+            results.push(...batchResults);
           }
         }
         

@@ -213,12 +213,12 @@
           <!-- Trade panel -->
           <div class="trade-panel">
 
-            <!-- Balance -->
+            <!-- Trade Info -->
             <div class="panel-section">
               <div class="balance-display">
-                <div class="balance-label">Paper Balance</div>
-                <div class="balance-val" id="bal-val">—</div>
-                <div class="balance-pct" id="bal-pct"></div>
+                <div class="balance-label">Paper Trading</div>
+                <div class="balance-val" id="bal-val">Active</div>
+                <div class="balance-pct" id="bal-pct">Each trade independent</div>
               </div>
             </div>
 
@@ -508,7 +508,6 @@
 
 
     async function closePosition(tradeId, originalAction, qty, entryPrice) {
-      if (!selectedSystem) return;
       const price = livePrice || entryPrice;
       const closeSide = originalAction === 'buy' ? 'sell' : 'buy';
       const pnl = originalAction === 'buy'
@@ -518,18 +517,9 @@
       // Mark original trade as closed with P&L
       await sbClient.from('trades').update({ pnl, status: 'closed', closed_at: new Date().toISOString(), exit_price: price }).eq('id', tradeId);
 
-      // Update paper balance
-      const curBal = Number(paperAcct?.balance ?? 100000);
-      const proceeds = originalAction === 'buy' ? qty * price : -(qty * price);
-      const newBal = curBal + proceeds + pnl;
-      if (paperAcct) { await sbClient.from('paper_accounts').update({ balance: Math.max(0, newBal), updated_at: new Date().toISOString() }).eq('user_id', currentUser.id); }
-      else { await sbClient.from('paper_accounts').insert({ user_id: currentUser.id, balance: Math.max(0, newBal) }); }
-      paperAcct = { balance: Math.max(0, newBal) };
-      renderBalance();
-
-      // Insert close trade record
+      // Insert close trade record - each trade independent, no balance tracking
       await sbClient.from('trades').insert({
-        user_id: currentUser.id, system_id: selectedSystem.id,
+        user_id: currentUser.id, system_id: selectedSystem?.id || null,
         symbol: (await sbClient.from('trades').select('symbol').eq('id', tradeId).single()).data?.symbol || currentSymbol,
         action: closeSide, price, quantity: qty, status: 'filled',
         source: 'paper-market', pnl,
@@ -543,11 +533,9 @@
 
     // ── Trade history ────────────────────────────────────────────────────────
     async function loadHistory() {
-      if (!selectedSystem) { loadChartTrades([]); return; }
       const { data } = await sbClient.from('trades')
         .select('id, symbol, action, price, quantity, pnl, created_at')
         .eq('user_id', currentUser.id)
-        .eq('system_id', selectedSystem.id)
         .eq('source', 'paper-market')
         .order('created_at', { ascending: false })
         .limit(20);
@@ -568,11 +556,9 @@
     async function loadOpenPositions() {
       const body = document.getElementById('chart-positions-body');
       const countEl = document.getElementById('chart-trades-count');
-      if (!selectedSystem) { body.innerHTML = '<div class="tbl-empty">No system selected</div>'; return; }
       const { data } = await sbClient.from('trades')
         .select('id, symbol, action, price, quantity, created_at')
         .eq('user_id', currentUser.id)
-        .eq('system_id', selectedSystem.id)
         .eq('source', 'paper-market')
         .is('pnl', null)
         .order('created_at', { ascending: false });
@@ -658,13 +644,13 @@
 
     // ── Submit order ─────────────────────────────────────────────────────────
     async function submitOrder() {
+      console.log('[PaperMarket] submitOrder clicked');
       const msgEl = document.getElementById('trade-msg');
       msgEl.className = 'trade-msg';
       msgEl.style.display = 'none';
 
-      if (!selectedSystem) { showMsg('Select a system first.', 'error'); return; }
-
       const sym = document.getElementById('order-symbol').value.trim().toUpperCase() || currentSymbol;
+      console.log('[PaperMarket] Symbol:', sym);
       if (!sym) { showMsg('Enter a symbol.', 'error'); return; }
 
       let price = currentOrderType === 'limit'
@@ -677,21 +663,14 @@
       let qty = amountMode === 'shares' ? Math.floor(amount) : Math.floor(amount / price);
       if (!qty || qty <= 0) { showMsg('Enter a valid amount.', 'error'); return; }
 
-      const totalCost = qty * price;
-      const bal = Number(paperAcct?.balance ?? 100000);
-
-      if (currentSide === 'buy' && totalCost > bal) {
-        showMsg(`Insufficient balance. Need $${totalCost.toFixed(2)}, have $${bal.toFixed(2)}.`, 'error'); return;
-      }
-
       const btn = document.getElementById('submit-btn');
       btn.disabled = true;
 
       try {
-        // Insert trade
+        // Insert trade - each trade is independent, no shared balance
         await sbClient.from('trades').insert({
           user_id: currentUser.id,
-          system_id: selectedSystem.id,
+          system_id: selectedSystem?.id || null,
           symbol: sym,
           action: currentSide,
           price,
@@ -703,18 +682,12 @@
           created_at: new Date().toISOString(),
         });
 
-        // Update paper balance
-        const newBal = currentSide === 'buy' ? bal - totalCost : bal + totalCost;
-        if (paperAcct) { await sbClient.from('paper_accounts').update({ balance: Math.max(0, newBal), updated_at: new Date().toISOString() }).eq('user_id', currentUser.id); }
-        else { await sbClient.from('paper_accounts').insert({ user_id: currentUser.id, balance: Math.max(0, newBal) }); }
-        paperAcct = { balance: Math.max(0, newBal) };
-        renderBalance();
-
         showMsg(`${currentSide === 'buy' ? 'Bought' : 'Sold'} ${qty} ${sym} @ $${price.toFixed(2)}`, 'success');
         document.getElementById('order-amount').value = '';
         updateSummary();
         loadHistory();
       } catch(e) {
+        console.error('[PaperMarket] Order error:', e);
         showMsg('Order failed: ' + e.message, 'error');
       } finally {
         btn.disabled = false;
@@ -725,6 +698,7 @@
       const el = document.getElementById('trade-msg');
       el.textContent = text;
       el.className = 'trade-msg ' + type;
+      el.style.display = 'block';
     }
 
     // ── Init ─────────────────────────────────────────────────────────────────

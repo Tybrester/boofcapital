@@ -32,9 +32,9 @@ Deno.serve(async (req) => {
     const ticker = normalizeSymbol(symbol);
     const noCache = url.searchParams.get('nocache') === 'true';
 
-    // Return cached price if within 30 seconds (unless nocache requested)
+    // Return cached price if within 5 seconds (unless nocache requested)
     const cached = cache[ticker];
-    if (!noCache && cached && Date.now() - cached.ts < 30000) {
+    if (!noCache && cached && Date.now() - cached.ts < 5000) {
       return new Response(JSON.stringify({ price: cached.price, ticker, cached: true }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });

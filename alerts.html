@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>EasyTrade — Systems</title>
+  <title>BoofCapital — Systems</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
@@ -378,6 +378,44 @@
       document.getElementById('delete-modal').classList.add('open');
     }
 
+    async function resetSystemPaperBalance(systemId) {
+      if (!confirm('Reset paper balance for this system to $100,000?\n\nThis will NOT delete trades, only reset the balance.')) return;
+      
+      const { data: system } = await sbClient.from('systems').select('broker').eq('id', systemId).single();
+      const broker = system?.broker || 'paper';
+      
+      // Reset paper balance in the appropriate table
+      if (broker === 'tastytrade') {
+        // For tastytrade, we don't have a paper balance - show message
+        alert('TastyTrade accounts use real money. Paper balance reset not applicable.');
+        return;
+      }
+      
+      // Get current user
+      const { data: { session } } = await sbClient.auth.getSession();
+      if (!session) {
+        alert('Not logged in!');
+        return;
+      }
+      
+      // Reset dashboard paper_accounts balance
+      const { data: acct } = await sbClient.from('paper_accounts').select('*').eq('user_id', session.user.id).maybeSingle();
+      if (acct) {
+        await sbClient.from('paper_accounts').update({ balance: 100000, updated_at: new Date().toISOString() }).eq('user_id', session.user.id);
+      } else {
+        await sbClient.from('paper_accounts').insert({ user_id: session.user.id, balance: 100000 });
+      }
+      
+      // Reset localStorage for this system
+      localStorage.setItem(`paper_balance_${systemId}`, '100000');
+      
+      // Refresh the UI
+      const balEl = document.getElementById('paper-bal-' + systemId);
+      if (balEl) balEl.textContent = '$100,000.00';
+      
+      alert('Paper balance reset to $100,000! Dashboard balance updated.');
+    }
+
     async function loadSystems() {
       const container = document.getElementById('systems-container');
       let systems = [];
@@ -434,6 +472,19 @@
         // Footer
         const footer = document.createElement('div');
         footer.className = 'sc-footer';
+        
+        // Reset Paper Balance button (only for paper broker)
+        if (s.broker !== 'tastytrade') {
+          const resetBtn = document.createElement('button');
+          resetBtn.className = 'btn-reset';
+          resetBtn.textContent = 'Reset Paper';
+          resetBtn.style.cssText = 'background:transparent;border:1px solid #555;color:#888;font-weight:600;padding:8px 14px;border-radius:8px;cursor:pointer;font-family:inherit;font-size:0.8rem;transition:all 0.2s;margin-right:auto;';
+          resetBtn.onmouseover = () => { resetBtn.style.borderColor = 'var(--accent)'; resetBtn.style.color = 'var(--accent)'; };
+          resetBtn.onmouseout = () => { resetBtn.style.borderColor = '#555'; resetBtn.style.color = '#888'; };
+          resetBtn.addEventListener('click', () => resetSystemPaperBalance(s.id));
+          footer.appendChild(resetBtn);
+        }
+        
         const delBtn = document.createElement('button');
         delBtn.className = 'btn-delete';
         delBtn.textContent = 'Delete';
