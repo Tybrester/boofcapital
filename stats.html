@@ -507,11 +507,24 @@
           return;
         }
 
-        // Load stock bots with trades
+        // Load stock bots
         const { data: stockBots } = await sbClient
           .from('stock_bots')
-          .select('*, trades(*)')
+          .select('*')
           .eq('user_id', user.id);
+
+        // Load ALL trades for this user (closed trades have pnl set)
+        const { data: allTrades } = await sbClient
+          .from('trades')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('status', 'closed')
+          .order('created_at', { ascending: false });
+
+        // Attach trades to their bots
+        (stockBots || []).forEach(bot => {
+          bot.trades = (allTrades || []).filter(t => t.bot_id === bot.id);
+        });
 
         // Load options bots with trades
         const { data: optionsBots } = await sbClient
@@ -523,7 +536,7 @@
         globalStockBots = stockBots || [];
         globalOptionsBots = optionsBots || [];
 
-        console.log(`Loaded ${globalStockBots.length} stock bots and ${globalOptionsBots.length} options bots`);
+        console.log(`Loaded ${globalStockBots.length} stock bots, ${globalOptionsBots.length} options bots, ${(allTrades||[]).length} closed trades`);
 
         // Render all bots together
         renderBotStats(stockBots || [], optionsBots || []);
