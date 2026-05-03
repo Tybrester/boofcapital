@@ -1755,9 +1755,15 @@
           const pnlClass = displayPnl > 0 ? 'trade-buy' : displayPnl < 0 ? 'trade-sell' : '';
           const pnlText = displayPnl != null ? `${isUnrealized ? '<span style="font-size:0.65rem;color:#888;">~</span>' : ''}$${Number(displayPnl).toFixed(2)}` : '-';
           const pnlPercentText = displayPnl != null && displayPnl !== 0 ? ` (${pnlPercent > 0 ? '+' : ''}${pnlPercent.toFixed(1)}%)` : '';
-          const typeBadge = t.botType === 'stock' 
-            ? '<span class="trade-type-stock">STOCK</span>' 
-            : '<span class="trade-type-options">OPTIONS</span>';
+          const isCryptoSymbol = t.symbol?.includes('-USD') || t.symbol?.includes('/USD');
+          const isFuturesSymbol = t.symbol?.includes('=F');
+          const typeBadge = t.botType === 'options' 
+            ? '<span class="trade-type-options">OPTIONS</span>'
+            : isCryptoSymbol 
+              ? '<span class="trade-type-stock" style="background:rgba(247,147,26,0.15);color:#f7931a;">CRYPTO</span>'
+              : isFuturesSymbol
+                ? '<span class="trade-type-stock" style="background:rgba(100,149,237,0.15);color:#6495ed;">FUTURES</span>'
+                : '<span class="trade-type-stock">STOCK</span>';
           const optionDetails = t.botType === 'options' && t.optionType 
             ? `<span class="option-details">${t.optionType.toUpperCase()} $${t.strike} · ${t.expiration}</span>` 
             : '';

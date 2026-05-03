@@ -1154,6 +1154,18 @@ Deno.serve(async (req) => {
           .eq('source', 'auto-bot').eq('status', 'filled').is('pnl', null)
           .limit(1).maybeSingle();
         const hasRealPosition = !!realOpenTrade;
+        
+        // Cooldown: don't re-enter if a trade was recently closed on this symbol
+        const cooldownMinutes = Math.max(Number(settings.interval?.replace(/[^\d]/g, '')) || 5, 5);
+        const cooldownAgo = new Date(Date.now() - cooldownMinutes * 60 * 1000).toISOString();
+        const { data: recentlyClosed } = await supabase.from('trades')
+          .select('id').eq('bot_id', bot.id as string).eq('symbol', sym)
+          .eq('source', 'auto-bot').eq('status', 'closed')
+          .gte('closed_at', cooldownAgo)
+          .limit(1).maybeSingle();
+        if (recentlyClosed && !hasRealPosition) {
+          return { bot_id: bot.id, symbol: sym, status: 'skipped', reason: `Cooldown: trade closed within ${cooldownMinutes}m` };
+        }
 
         const overrideSettings = { ...settings, symbol: sym };
         const botSignal = (bot.bot_signal as string) || 'supertrend';
