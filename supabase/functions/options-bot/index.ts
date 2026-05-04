@@ -856,13 +856,8 @@ Deno.serve(async (req) => {
     let targetBotId: string | null = null;
     let targetUserId: string | null = null;
 
-    // Handle sync trigger from stock bot (process specific symbol immediately)
-    let syncSymbol: string | null = null;
-    let syncSignal: string | null = null;
-    let isSyncTrigger = false;
-    let triggerSource: string | null = null;
-    let reqBody: any = null;
-
+    // INDEPENDENT MODE: Options bot runs on its own schedule via cron
+    // No sync trigger from stock bot - generates its own signals
     if (req.method === 'POST') {
       const authHeader = req.headers.get('Authorization');
       const body = await req.json().catch(() => ({}));
@@ -875,25 +870,13 @@ Deno.serve(async (req) => {
       }
       targetBotId = body.bot_id || null;
       targetUserId = targetUserId || body.user_id || null;
-      
-      // Check for sync trigger from stock bot
-      syncSymbol = body.symbol || null;
-      syncSignal = body.signal || null;
-      isSyncTrigger = body.trigger_source === 'auto-bot-sync';
-      triggerSource = body.trigger_source;
-      reqBody = body;
-      console.log(`[OptionsBot] Request body:`, JSON.stringify({trigger_source: body.trigger_source, symbol: body.symbol, signal: body.signal, bot_id: body.bot_id}));
-      console.log(`[OptionsBot] isSyncTrigger=${isSyncTrigger}, syncSymbol=${syncSymbol}, syncSignal=${syncSignal}`);
-      if (isSyncTrigger && syncSymbol && syncSignal) {
-        console.log(`[OptionsBot] Sync trigger from stock bot: ${syncSymbol} ${syncSignal}`);
-      }
     }
 
     let query = supabase.from('options_bots').select('*').eq('enabled', true).eq('auto_submit', true);
     if (targetBotId)  query = query.eq('id', targetBotId);
     if (targetUserId) query = query.eq('user_id', targetUserId);
 
-    console.log(`[OptionsBot] Query: targetBotId=${targetBotId}, targetUserId=${targetUserId}, isSyncTrigger=${isSyncTrigger}`);
+    console.log(`[OptionsBot] Query: targetBotId=${targetBotId}, targetUserId=${targetUserId}, independent_mode=true`);
 
     const { data: bots, error: botErr } = await query;
     
@@ -975,12 +958,8 @@ Deno.serve(async (req) => {
       'SPY','QQQ','AAPL','MSFT','GOOGL','AVGO','INTC','PYPL','SNAP','UBER',
     ];
     for (const bot of bots) {
-      // SYNC-ONLY MODE: Only trade on stock bot sync trigger, skip scheduled scans
-      console.log(`[OptionsBot] Checking bot "${bot.name}" - isSyncTrigger=${isSyncTrigger}, syncSymbol=${syncSymbol}, syncSignal=${syncSignal}`);
-      if (!isSyncTrigger) {
-        console.log(`[OptionsBot] Skipping "${bot.name}" - sync-only mode (waiting for stock bot trigger)`);
-        continue;
-      }
+      // INDEPENDENT MODE: Options bot runs on its own schedule, scans symbols like stock bot
+      console.log(`[OptionsBot] Running bot "${bot.name}" independently`);
       
       // Check if bot should run based on run_interval_min
       const runIntervalMin = (bot.run_interval_min as number) ?? 15;
@@ -992,14 +971,10 @@ Deno.serve(async (req) => {
         continue;
       }
       
-      // Options only trade during market hours (skip after hours) - unless test_mode
-      const isTestMode = triggerSource === 'auto-bot-sync' && reqBody?.test_mode === true;
-      if (!isOptionsMarketHours && !isTestMode) {
+      // Options only trade during market hours (skip after hours)
+      if (!isOptionsMarketHours) {
         console.log(`[OptionsBot] Skipping "${bot.name}" - options markets closed (ET=${etHour}:${etMinute})`);
         continue;
-      }
-      if (isTestMode) {
-        console.log(`[OptionsBot] TEST MODE - bypassing market hours check for "${bot.name}"`);
       }
       
       // 0DTE cutoff: Don't trade 0DTE after 2:00 PM ET (12:00 PM MT)
@@ -1033,18 +1008,12 @@ Deno.serve(async (req) => {
 
       const scanMode: string = (bot.bot_scan_mode as string) || 'single';
       
-      // Use sync symbol from stock bot trigger (limit to just that symbol for sync)
-      let symbolList: string[];
-      if (isSyncTrigger && syncSymbol) {
-        symbolList = [syncSymbol];
-        console.log(`[OptionsBot] "${bot.name}" | SYNC MODE | symbol=${syncSymbol} | signal=${syncSignal}`);
-      } else {
-        symbolList = scanMode === 'scan_stocks' ? SCAN_STOCKS
-          : scanMode === 'scan_etfs' ? SCAN_ETFS
-          : scanMode === 'scan_top10' ? SCAN_TOP10
-          : scanMode === 'scan_top50' ? SCAN_TOP50
-          : [settings.symbol];
-      }
+      // INDEPENDENT MODE: Build symbol list from bot's scan mode
+      const symbolList: string[] = scanMode === 'scan_stocks' ? SCAN_STOCKS
+        : scanMode === 'scan_etfs' ? SCAN_ETFS
+        : scanMode === 'scan_top10' ? SCAN_TOP10
+        : scanMode === 'scan_top50' ? SCAN_TOP50
+        : [settings.symbol];
 
       console.log(`[OptionsBot] "${bot.name}" | scanMode=${scanMode} | symbols=${symbolList.length} | list=[${symbolList.slice(0,5).join(',')}...${symbolList.slice(-3).join(',')}]`);
 
@@ -1144,34 +1113,27 @@ Deno.serve(async (req) => {
               const candles = await fetchCandles(sym, settings.interval, 150);
               if (candles.length < 60) { results.push({ bot_id: bot.id, symbol: sym, status: 'skipped', reason: 'Not enough candle data' }); return; }
 
-              // In sync mode, use stock bot's signal directly. Otherwise generate our own.
+              // INDEPENDENT MODE: Always generate our own signal based on bot_signal setting
               let signal: 'buy' | 'sell' | 'none';
               let price: number;
               let reason: string;
               
-              if (isSyncTrigger && syncSignal) {
-                // SYNC MODE: Use stock bot's signal directly
-                signal = syncSignal as 'buy' | 'sell';
-                price = candles[candles.length - 1].close;
-                reason = `Synced with stock bot: ${signal} @ $${price.toFixed(2)}`;
-                console.log(`[OptionsBot] "${bot.name}" | ${sym} | SYNC SIGNAL: ${signal} | price=$${price.toFixed(2)}`);
+              const botSignal = settings.botSignal || 'supertrend';
+              let sigResult: { signal: 'buy' | 'sell' | 'none', price: number, reason: string, trend?: number, ema?: number, adx?: number };
+              if (botSignal === 'rsi_macd') {
+                sigResult = generateSignalRSIMACD(candles, settings.tradeDirection);
+              } else if (botSignal === 'boof20') {
+                sigResult = generateSignalBoof20(candles, settings.tradeDirection, 0.0, 0.0);
+              } else if (botSignal === 'boof30') {
+                sigResult = generateSignalBoof30(candles, settings.tradeDirection);
               } else {
-                // Regular mode: Generate our own signal based on bot_signal setting
-                const botSignal = settings.botSignal || 'supertrend';
-                let sigResult: { signal: 'buy' | 'sell' | 'none', price: number, reason: string, trend?: number, ema?: number, adx?: number };
-                if (botSignal === 'rsi_macd') {
-                  sigResult = generateSignalRSIMACD(candles, settings.tradeDirection);
-                } else if (botSignal === 'boof20') {
-                  sigResult = generateSignalBoof20(candles, settings.tradeDirection, 0.0, 0.0);
-                } else if (botSignal === 'boof30') {
-                  sigResult = generateSignalBoof30(candles, settings.tradeDirection);
-                } else {
-                  sigResult = generateSignal(candles, settings);
-                }
-                signal = sigResult.signal;
-                price = sigResult.price;
-                reason = sigResult.reason;
+                sigResult = generateSignal(candles, settings);
               }
+              signal = sigResult.signal;
+              price = sigResult.price;
+              reason = sigResult.reason;
+              
+              console.log(`[OptionsBot] "${bot.name}" | ${sym} | SIGNAL: ${signal} | price=$${price.toFixed(2)} | signal_type=${botSignal}`);
               
               if (signal === 'none') { results.push({ bot_id: bot.id, symbol: sym, status: 'skipped', reason: 'no_signal' }); return; }
               if (signal === 'buy'  && settings.tradeDirection === 'short') { results.push({ bot_id: bot.id, symbol: sym, status: 'skipped', reason: 'Direction filter' }); return; }

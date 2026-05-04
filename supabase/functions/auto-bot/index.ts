@@ -1528,67 +1528,8 @@ Deno.serve(async (req) => {
 
         await supabase.from('stock_bot_logs').insert({ bot_id: bot.id, user_id: bot.user_id, symbol: sym, signal, price, trend, ema, adx, reason, trade_id: trade?.id || null, created_at: new Date().toISOString() });
 
-        // Trigger options bot ONLY after stock order is FILLED (not pending)
-        // This ensures options don't trade unless stock actually fills
-        if (tradeStatus === 'filled' && trade?.id) {
-          try {
-            // Get enabled options bots and their scan lists (with interval for matching)
-            const { data: optsBots } = await supabase.from('options_bots')
-              .select('id, bot_scan_mode, bot_symbol, bot_interval')
-              .eq('user_id', bot.user_id)
-              .eq('enabled', true)
-              .eq('auto_submit', true);
-            
-            // Check if any options bot scans this symbol AND has matching interval
-            const stockInterval = bot.bot_interval || '1h';
-            console.log(`[AutoBot] Checking ${optsBots?.length || 0} options bots for symbol ${sym}, stock interval=${stockInterval}`);
-            
-            let matchedBot = null;
-            const scansSymbol = optsBots?.some(ob => {
-              const optsInterval = ob.bot_interval || '1h';
-              const symbolMatch = ob.bot_scan_mode === 'single' ? ob.bot_symbol === sym :
-                                 ob.bot_scan_mode === 'scan_stocks' ? ['AAPL','MSFT','AMZN','NVDA','TSLA','GOOG','GOOGL','META','NFLX','BRK-B','JPM','BAC','WFC','V','MA','PG','KO','PFE','UNH','HD','INTC','CSCO','ADBE','CRM','ORCL','AMD','QCOM','TXN','IBM','AVGO','XOM','CVX','BA','CAT','MMM','GE','HON','LMT','NOC','DE','C','GS','MS','AXP','BLK','SCHW','BK','SPGI','ICE','MRK','ABBV','AMGN','BMY','LLY','GILD','JNJ','REGN','VRTX','BIIB','WMT','COST','TGT','LOW','MCD','SBUX','NKE','BKNG','SNAP','UBER','LYFT','SPOT','ZM','DOCU','PINS','ROKU','SHOP','CVS','TMO','MDT','ISRG','F','GM','SNOW','CRWD','NET','DDOG','MDB','OKTA','SPLK','FSLR','ENPH','SEDG','DKNG','CHPT','LCID','RIVN','HOOD','SOFI','AI','PLTR','ASML','MU','LRCX','KLAC','AMAT','MRVL','NXPI','CDNS','SNPS','ANET','FTNT','PANW','GME','AMC','BBBY','EXPR','KOSS','NAKD','SNDL','TLRY','ACB','CGC','QQQ','SPY','VOO','IVV','VTI','VUG','QQQM','SCHG','XLK','VGT','SMH','TQQQ'].includes(sym) :
-                                 ob.bot_scan_mode === 'scan_etfs' ? ['QQQ','SPY','VOO','IVV','VTI','VUG','QQQM','SCHG','XLK','VGT','SMH','TQQQ'].includes(sym) :
-                                 ob.bot_scan_mode === 'scan_top10' ? ['SMCI','TSLA','NVDA','COIN','PLTR','AMD','MRNA','MSTY','ENPH','VKTX','CCL'].includes(sym) :
-                                 false;
-              
-              const intervalMatch = optsInterval === stockInterval;
-              
-              console.log(`[AutoBot] Options bot "${ob.id.slice(0,8)}" | mode=${ob.bot_scan_mode} | symbol=${ob.bot_symbol} | optsInterval=${optsInterval} | symbolMatch=${symbolMatch} | intervalMatch=${intervalMatch}`);
-              
-              if (symbolMatch && intervalMatch) {
-                matchedBot = ob;
-                return true;
-              }
-              return false;
-            });
-            
-            if (scansSymbol) {
-              const optionsBotUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/options-bot`;
-              fetch(optionsBotUrl, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
-                },
-                body: JSON.stringify({
-                  user_id: bot.user_id,
-                  symbol: sym,
-                  signal: signal,
-                  trigger_source: 'auto-bot-sync',
-                  price: price,
-                  stock_trade_id: trade.id, // Pass stock trade ID for tracking
-                  stock_trade_status: tradeStatus, // 'filled' or 'pending'
-                }),
-              }).catch(() => {}); // Fire and forget, don't wait
-              console.log(`[AutoBot] Triggered options-bot for ${sym} ${signal} (stock ${tradeStatus}, symbol in scan list)`);
-            } else {
-              console.log(`[AutoBot] Skipped options trigger - ${sym} not in any options bot scan list`);
-            }
-          } catch (_) { /* ignore trigger errors */ }
-        } else {
-          console.log(`[AutoBot] Skipped options trigger - stock order failed or no trade ID`);
-        }
+        // Note: Options bot now runs independently - no sync trigger from stock bot
+        // Options bot scans symbols on its own schedule and generates its own signals
 
         return { bot_id: bot.id, status: tradeStatus, signal, symbol: sym, price, quantity, order_id: orderId, reason, broker_error: brokerError };
       } catch (err) {
