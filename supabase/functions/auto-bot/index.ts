@@ -1674,16 +1674,16 @@ Deno.serve(async (req) => {
       const scanCrypto = bot.scan_crypto || false;
       const scanFutures = bot.scan_futures || false;
       
-      // Check if bot is trading stocks after hours
-      if (scanStocks && !isStockMarketHours) {
-        console.log(`[AutoBot] Skipping "${bot.name}" - stock markets closed (${etNow.toLocaleTimeString('en-US', {timeZone: 'America/New_York'})} ET)`);
-        continue;
+      // Skip stocks portion if market is closed (but still run crypto/futures)
+      const skipStocks = scanStocks && !isStockMarketHours;
+      if (skipStocks) {
+        console.log(`[AutoBot] Skipping stocks for "${bot.name}" - stock markets closed (${etNow.toLocaleTimeString('en-US', {timeZone: 'America/New_York'})} ET)`);
       }
       
-      console.log(`[AutoBot] Running "${bot.name}" | stocks=${scanStocks}, crypto=${scanCrypto}, futures=${scanFutures} | ${settings.interval} | interval=${runIntervalMin}m`);
+      console.log(`[AutoBot] Running "${bot.name}" | stocks=${scanStocks}${skipStocks?' (skipped)':''}, crypto=${scanCrypto}, futures=${scanFutures} | ${settings.interval} | interval=${runIntervalMin}m`);
 
       try {
-        if (scanStocks) {
+        if (scanStocks && !skipStocks) {
           for (const sym of SCAN_STOCKS) {
             const result = await processSymbol(bot, sym, settings);
             results.push(result);
