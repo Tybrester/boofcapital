@@ -563,61 +563,19 @@
         <div class="panel" style="display:flex;flex-direction:column;gap:14px;padding:24px;">
           <div style="display:flex;align-items:center;justify-content:space-between;">
             <h2 style="margin-bottom:0;font-size:1.3rem;">Connect & Configure</h2>
-            <div style="display:flex;gap:8px;">
-              <span id="fb-orb-badge" style="font-size:0.75rem;font-weight:700;padding:4px 10px;border-radius:20px;background:rgba(255,255,255,0.05);color:#555;">ORB ○</span>
-              <span id="fb-fade-badge" style="font-size:0.75rem;font-weight:700;padding:4px 10px;border-radius:20px;background:rgba(255,255,255,0.05);color:#555;">FADE ○</span>
-            </div>
+            <span id="fb-status-badge" style="font-size:0.85rem;font-weight:700;padding:5px 12px;border-radius:20px;background:rgba(255,255,255,0.05);color:#555;">○ Stopped</span>
           </div>
           <input id="fb-username" type="text" placeholder="TopstepX Username" style="background:#1a1a1a;border:1px solid #2a2a2a;color:var(--text);font-size:1rem;font-family:inherit;padding:13px 16px;border-radius:8px;outline:none;">
           <input id="fb-api-key" type="password" placeholder="API Key" style="background:#1a1a1a;border:1px solid #2a2a2a;color:var(--text);font-size:1rem;font-family:inherit;padding:13px 16px;border-radius:8px;outline:none;">
           <div style="font-size:0.75rem;color:var(--muted);margin-top:-6px;">Your own TopstepX API key (TopstepX → Settings → API Keys)</div>
 
-          <!-- ORB Bot Config -->
           <div style="border:1px solid #2a2a2a;border-radius:10px;padding:14px 16px;background:#0e0e0e;">
-            <div style="font-size:0.85rem;font-weight:700;color:var(--accent);margin-bottom:10px;">ORB Bot</div>
-            <div style="display:flex;gap:12px;">
-              <div style="flex:1;">
-                <label for="fb-base-symbol" style="display:block;font-size:0.75rem;color:var(--muted);margin-bottom:4px;">Contract</label>
-                <select id="fb-base-symbol" style="width:100%;background:#1a1a1a;border:1px solid #2a2a2a;color:var(--text);font-size:0.95rem;font-family:inherit;padding:11px 14px;border-radius:8px;outline:none;box-sizing:border-box;">
-                  <option value="MNQ">MNQ (Micro)</option>
-                  <option value="NQ">NQ (Full-size)</option>
-                </select>
-              </div>
-              <div style="flex:1;">
-                <label for="fb-base-qty" style="display:block;font-size:0.75rem;color:var(--muted);margin-bottom:4px;">Qty</label>
-                <input id="fb-base-qty" type="number" min="1" step="1" value="1" style="width:100%;background:#1a1a1a;border:1px solid #2a2a2a;color:var(--text);font-size:0.95rem;font-family:inherit;padding:11px 14px;border-radius:8px;outline:none;box-sizing:border-box;">
-              </div>
-              <div style="flex:1;">
-                <label for="fb-loss-symbol" style="display:block;font-size:0.75rem;color:var(--muted);margin-bottom:4px;">Loss Contract</label>
-                <select id="fb-loss-symbol" style="width:100%;background:#1a1a1a;border:1px solid #2a2a2a;color:var(--text);font-size:0.95rem;font-family:inherit;padding:11px 14px;border-radius:8px;outline:none;box-sizing:border-box;">
-                  <option value="MNQ">MNQ (Micro)</option>
-                  <option value="NQ">NQ (Full-size)</option>
-                </select>
-              </div>
-              <div style="flex:1;">
-                <label for="fb-loss-qty" style="display:block;font-size:0.75rem;color:var(--muted);margin-bottom:4px;">Loss Qty</label>
-                <input id="fb-loss-qty" type="number" min="1" step="1" value="1" style="width:100%;background:#1a1a1a;border:1px solid #2a2a2a;color:var(--text);font-size:0.95rem;font-family:inherit;padding:11px 14px;border-radius:8px;outline:none;box-sizing:border-box;">
-              </div>
+            <div style="font-size:0.85rem;font-weight:700;color:var(--accent);margin-bottom:8px;">Combined ORB + Fade Bot</div>
+            <div style="font-size:0.75rem;color:#777;line-height:1.5;">
+              Runs ORB and Fade under one shared TopstepX connection.
+              <br>Default sizing: ORB 8 MNQ / Fade 1 MNQ.
+              <br>Fade: SL=25 | Floor=7 | Trail=3 | MaxHold=2min | Cooldown=120s | Kill=-$300
             </div>
-          </div>
-
-          <!-- Fade Bot Config -->
-          <div style="border:1px solid #2a2a2a;border-radius:10px;padding:14px 16px;background:#0e0e0e;">
-            <div style="font-size:0.85rem;font-weight:700;color:var(--accent);margin-bottom:10px;">Fade Scalp Bot</div>
-            <div style="display:flex;gap:12px;">
-              <div style="flex:1;">
-                <label for="fade-base-symbol" style="display:block;font-size:0.75rem;color:var(--muted);margin-bottom:4px;">Contract</label>
-                <select id="fade-base-symbol" style="width:100%;background:#1a1a1a;border:1px solid #2a2a2a;color:var(--text);font-size:0.95rem;font-family:inherit;padding:11px 14px;border-radius:8px;outline:none;box-sizing:border-box;">
-                  <option value="MNQ">MNQ (Micro)</option>
-                  <option value="NQ">NQ (Full-size)</option>
-                </select>
-              </div>
-              <div style="flex:1;">
-                <label for="fade-base-qty" style="display:block;font-size:0.75rem;color:var(--muted);margin-bottom:4px;">Qty</label>
-                <input id="fade-base-qty" type="number" min="1" step="1" value="1" style="width:100%;background:#1a1a1a;border:1px solid #2a2a2a;color:var(--text);font-size:0.95rem;font-family:inherit;padding:11px 14px;border-radius:8px;outline:none;box-sizing:border-box;">
-              </div>
-            </div>
-            <div style="font-size:0.7rem;color:#555;margin-top:8px;">SL=25 | Floor=7 | Trail=3 | MaxHold=15min | Cooldown=120s | Kill=-$300</div>
           </div>
 
           <div id="fb-qty-msg" style="font-size:0.8rem;min-height:1.1em;"></div>
@@ -717,14 +675,6 @@
       const els = {
         username: document.getElementById('fb-username'),
         apiKey: document.getElementById('fb-api-key'),
-        // ORB config
-        baseSymbol: document.getElementById('fb-base-symbol'),
-        baseQty: document.getElementById('fb-base-qty'),
-        lossSymbol: document.getElementById('fb-loss-symbol'),
-        lossQty: document.getElementById('fb-loss-qty'),
-        // Fade config
-        fadeSymbol: document.getElementById('fade-base-symbol'),
-        fadeQty: document.getElementById('fade-base-qty'),
         // UI
         qtyMsg: document.getElementById('fb-qty-msg'),
         startBtn: document.getElementById('fb-start-btn'),
@@ -732,8 +682,7 @@
         clearBtn: document.getElementById('fb-clear-btn'),
         terminal: document.getElementById('fb-terminal'),
         errorEl: document.getElementById('fb-error'),
-        orbBadge: document.getElementById('fb-orb-badge'),
-        fadeBadge: document.getElementById('fb-fade-badge'),
+        statusBadge: document.getElementById('fb-status-badge'),
         accountRefreshBtn: document.getElementById('fb-account-refresh-btn'),
         accountError: document.getElementById('fb-account-error'),
         accountsList: document.getElementById('fb-accounts-list'),
@@ -759,39 +708,39 @@
       const section = document.getElementById('futures-bot-section');
       if (section) section.style.display = '';
 
-      let orbEvtSource = null;
-      let fadeEvtSource = null;
-      let orbRunning = false, fadeRunning = false;
-      let orbLastHeart = 0, fadeLastHeart = 0;
+      let botEvtSource = null;
+      let botRunning = false;
+      let botLastHeart = 0;
 
       // Restore saved fields
       const saved = JSON.parse(localStorage.getItem('fb_creds') || '{}');
       if (saved.username) els.username.value = saved.username;
       if (saved.apiKey) els.apiKey.value = saved.apiKey;
-      if (saved.baseSymbol) els.baseSymbol.value = saved.baseSymbol;
-      if (saved.baseQty) els.baseQty.value = saved.baseQty;
-      if (saved.lossSymbol) els.lossSymbol.value = saved.lossSymbol;
-      if (saved.lossQty) els.lossQty.value = saved.lossQty;
-      if (saved.fadeSymbol) els.fadeSymbol.value = saved.fadeSymbol;
-      if (saved.fadeQty) els.fadeQty.value = saved.fadeQty;
 
       function saveFields() {
         localStorage.setItem('fb_creds', JSON.stringify({
           username: els.username.value,
           apiKey: els.apiKey.value,
-          baseSymbol: els.baseSymbol.value, baseQty: els.baseQty.value,
-          lossSymbol: els.lossSymbol.value, lossQty: els.lossQty.value,
-          fadeSymbol: els.fadeSymbol.value, fadeQty: els.fadeQty.value,
         }));
       }
 
       function updateButtons() {
-        const running = orbRunning || fadeRunning;
-        els.startBtn.disabled = running;
-        els.startBtn.style.opacity = running ? '0.4' : '1';
-        els.startBtn.style.cursor = running ? 'not-allowed' : 'pointer';
-        els.startBtn.textContent = running ? 'Running...' : 'Start';
-        els.stopBtn.style.display = running ? '' : '';
+        els.startBtn.disabled = botRunning;
+        els.startBtn.style.opacity = botRunning ? '0.4' : '1';
+        els.startBtn.style.cursor = botRunning ? 'not-allowed' : 'pointer';
+        els.startBtn.textContent = botRunning ? 'Running...' : 'Start';
+      }
+
+      function updateStatusBadge() {
+        if (botRunning) {
+          els.statusBadge.textContent = '● Combined Running';
+          els.statusBadge.style.background = 'rgba(0,230,118,0.12)';
+          els.statusBadge.style.color = '#00e676';
+        } else {
+          els.statusBadge.textContent = '○ Stopped';
+          els.statusBadge.style.background = 'rgba(255,255,255,0.05)';
+          els.statusBadge.style.color = '#555';
+        }
       }
 
       function showError(msg) {
@@ -799,77 +748,37 @@
         els.errorEl.style.display = msg ? 'block' : 'none';
       }
 
-      function setBadge(el, running, lastHeart) {
-        const stale = Date.now() - lastHeart > 90000; // >90s = stale
-        if (running && !stale && lastHeart > 0) {
-          el.textContent = el.dataset.label + ' ●';
-          el.style.background = 'rgba(0,230,118,0.15)';
-          el.style.color = '#00e676';
-        } else if (running) {
-          el.textContent = el.dataset.label + ' ◐';
-          el.style.background = 'rgba(255,200,0,0.12)';
-          el.style.color = '#ffc107';
-        } else {
-          el.textContent = el.dataset.label + ' ○';
-          el.style.background = 'rgba(255,255,255,0.05)';
-          el.style.color = '#555';
-        }
-      }
-      els.orbBadge.dataset.label = 'ORB';
-      els.fadeBadge.dataset.label = 'FADE';
-
-      function updateBadge() {
-        setBadge(els.orbBadge, orbRunning, orbLastHeart);
-        setBadge(els.fadeBadge, fadeRunning, fadeLastHeart);
-      }
-
-      function appendLine(prefix, line) {
+      function appendLine(line) {
         const t = els.terminal;
         const atBottom = t.scrollHeight - t.scrollTop - t.clientHeight < 40;
         if (t.textContent === 'Waiting for bot output...') t.textContent = '';
-        t.textContent += `[${prefix}] ${line}\n`;
+        t.textContent += line + '\n';
         if (atBottom) t.scrollTop = t.scrollHeight;
       }
 
-      function connectOrbStream() {
-        if (orbEvtSource) orbEvtSource.close();
-        orbEvtSource = new EventSource(`${RUNNER_URL}/api/stream?userId=${encodeURIComponent(userId)}&botType=orb`);
-        orbEvtSource.onmessage = (e) => {
+      function connectBotStream() {
+        if (botEvtSource) botEvtSource.close();
+        botEvtSource = new EventSource(`${RUNNER_URL}/api/stream?userId=${encodeURIComponent(userId)}&botType=combined`);
+        botEvtSource.onmessage = (e) => {
           let line; try { line = JSON.parse(e.data); } catch { line = e.data; }
-          if (line.includes('[HEARTBEAT]') || line.includes('Market feed live') || line.includes('Subscribed')) { orbLastHeart = Date.now(); updateBadge(); }
-          appendLine('ORB', line);
+          if (line.includes('[HEARTBEAT]') || line.includes('Market feed live') || line.includes('Subscribed') || line.includes('Running on WebSocket')) { botLastHeart = Date.now(); }
+          appendLine(line);
         };
-        orbEvtSource.onerror = () => { appendLine('ORB', 'Lost connection — retrying...'); };
-      }
-      function connectFadeStream() {
-        if (fadeEvtSource) fadeEvtSource.close();
-        fadeEvtSource = new EventSource(`${RUNNER_URL}/api/stream?userId=${encodeURIComponent(userId)}&botType=fade`);
-        fadeEvtSource.onmessage = (e) => {
-          let line; try { line = JSON.parse(e.data); } catch { line = e.data; }
-          if (line.includes('[HEARTBEAT]') || line.includes('Running on WebSocket') || line.includes('Subscribed')) { fadeLastHeart = Date.now(); updateBadge(); }
-          appendLine('FADE', line);
-        };
-        fadeEvtSource.onerror = () => { appendLine('FADE', 'Lost connection — retrying...'); };
+        botEvtSource.onerror = () => { appendLine('[dashboard] Lost bot connection — retrying...'); };
       }
 
       async function pollStatus() {
         try {
-          const [orbRes, fadeRes] = await Promise.all([
-            fetch(`${RUNNER_URL}/api/status?userId=${encodeURIComponent(userId)}&botType=orb`),
-            fetch(`${RUNNER_URL}/api/status?userId=${encodeURIComponent(userId)}&botType=fade`),
-          ]);
-          const orbJ = await orbRes.json();
-          const fadeJ = await fadeRes.json();
-          orbRunning = !!orbJ.running;
-          fadeRunning = !!fadeJ.running;
-          updateBadge();
+          const res = await fetch(`${RUNNER_URL}/api/status?userId=${encodeURIComponent(userId)}&botType=combined`);
+          const j = await res.json();
+          botRunning = !!j.running;
+          updateStatusBadge();
           updateButtons();
-          // Auto-connect streams if running
-          if (orbRunning && !orbEvtSource) connectOrbStream();
-          if (fadeRunning && !fadeEvtSource) connectFadeStream();
+          // Auto-connect stream if running
+          if (botRunning && !botEvtSource) connectBotStream();
         } catch {
-          orbRunning = false; fadeRunning = false;
-          updateBadge();
+          botRunning = false;
+          updateStatusBadge();
           updateButtons();
         }
       }
@@ -877,7 +786,7 @@
       // Poll status on page load to detect already-running bots
       await pollStatus();
 
-      // Start BOTH bots
+      // Start combined bot
       els.startBtn.addEventListener('click', async () => {
         showError('');
         saveFields();
@@ -885,49 +794,41 @@
         const apiKey = els.apiKey.value;
         if (!username || !apiKey) { showError('Enter your TopstepX credentials.'); return; }
 
-        const orbBody = {
-          userId, botType: 'orb', username, apiKey,
-          baseSymbol: els.baseSymbol.value,
-          baseQty: parseInt(els.baseQty.value, 10) || 1,
-          lossSymbol: els.lossSymbol.value,
-          lossQty: parseInt(els.lossQty.value, 10) || 1,
-        };
-        const fadeBody = {
-          userId, botType: 'fade', username, apiKey,
-          baseSymbol: els.fadeSymbol.value,
-          baseQty: parseInt(els.fadeQty.value, 10) || 1,
+        const body = {
+          userId, botType: 'combined', username, apiKey,
         };
 
         try {
-          const [orbRes, fadeRes] = await Promise.all([
-            fetch(`${RUNNER_URL}/api/start`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(orbBody) }),
-            fetch(`${RUNNER_URL}/api/start`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(fadeBody) }),
-          ]);
-          const orbJ = await orbRes.json();
-          const fadeJ = await fadeRes.json();
-          const errors = [];
-          if (!orbRes.ok) errors.push(`ORB: ${orbJ.error}`);
-          if (!fadeRes.ok) errors.push(`Fade: ${fadeJ.error}`);
-          if (errors.length) { showError(errors.join(' | ')); }
-          if (orbRes.ok) { connectOrbStream(); orbRunning = true; }
-          if (fadeRes.ok) { connectFadeStream(); fadeRunning = true; }
-          updateBadge();
-          updateButtons();
+          const res = await fetch(`${RUNNER_URL}/api/start`, {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify(body)
+          });
+          const j = await res.json();
+          if (!res.ok) {
+            showError(j.error || 'Failed to start bot');
+          } else {
+            connectBotStream();
+            botRunning = true;
+            updateStatusBadge();
+            updateButtons();
+          }
         } catch (e) {
           showError(`Could not reach runner at ${RUNNER_URL}`);
         }
       });
 
-      // Stop BOTH bots
+      // Stop combined bot
       els.stopBtn.addEventListener('click', async () => {
         showError('');
         try {
-          await Promise.all([
-            fetch(`${RUNNER_URL}/api/stop`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ userId, botType: 'orb' }) }),
-            fetch(`${RUNNER_URL}/api/stop`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ userId, botType: 'fade' }) }),
-          ]);
-          orbRunning = false; fadeRunning = false;
-          updateBadge();
+          await fetch(`${RUNNER_URL}/api/stop`, {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ userId, botType: 'combined' })
+          });
+          botRunning = false;
+          updateStatusBadge();
           updateButtons();
         } catch (e) {
           showError(`Could not reach runner at ${RUNNER_URL}`);
@@ -1013,10 +914,9 @@
       }
       els.accountRefreshBtn.addEventListener('click', refreshAccountInfo);
 
-      // Initial status check + auto-connect streams if running
+      // Initial status check + auto-connect stream if running
       pollStatus().then(() => {
-        if (orbRunning) connectOrbStream();
-        if (fadeRunning) connectFadeStream();
+        if (botRunning) connectBotStream();
       });
       setInterval(pollStatus, 10000);
     })();
