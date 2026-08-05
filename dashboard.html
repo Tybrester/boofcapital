@@ -580,18 +580,17 @@
 
           <div id="fb-qty-msg" style="font-size:0.8rem;min-height:1.1em;"></div>
           <div style="display:flex;gap:12px;margin-top:6px;">
-            <button id="fb-start-btn" class="btn-primary" style="margin-top:0;flex:1;padding:14px 0;font-size:1.05rem;">Start Bot</button>
-            <button id="fb-stop-btn" style="margin-top:0;flex:1;padding:14px 0;font-size:1.05rem;background:transparent;border:1px solid var(--red);color:var(--red);border-radius:8px;cursor:pointer;font-family:inherit;font-weight:700;">Stop Bot</button>
+            <button id="fb-start-btn" class="btn-primary" style="margin-top:0;flex:1;padding:14px 0;font-size:1.05rem;">Start</button>
+            <button id="fb-stop-btn" style="margin-top:0;flex:1;padding:14px 0;font-size:1.05rem;background:transparent;border:1px solid var(--red);color:var(--red);border-radius:8px;cursor:pointer;font-family:inherit;font-weight:700;">Stop</button>
           </div>
           <div id="fb-error" style="font-size:0.9rem;color:var(--red);display:none;"></div>
         </div>
         <div class="panel" style="display:flex;flex-direction:column;padding:0;overflow:hidden;">
-          <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;">
-            <span style="font-size:0.85rem;font-weight:700;color:var(--muted);">Combined Output</span>
-            <span style="flex:1;"></span>
+          <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
+            <h2 style="margin-bottom:0;font-size:1.3rem;">Terminal</h2>
             <button id="fb-clear-btn" style="background:none;border:1px solid #333;color:var(--muted);font-size:0.85rem;padding:6px 14px;border-radius:5px;cursor:pointer;font-family:inherit;">Clear</button>
           </div>
-          <pre id="fb-terminal" style="flex:1;margin:0;padding:20px 22px;background:#050505;color:#00e676;font-family:'Consolas','Menlo',monospace;font-size:1rem;line-height:1.6;overflow-y:auto;height:75vh;min-height:600px;white-space:pre-wrap;word-break:break-word;">Waiting for bot output...</pre>
+          <pre id="fb-terminal" style="margin:0;padding:20px 22px;background:#050505;color:#00e676;font-family:'Consolas','Menlo',monospace;font-size:0.85rem;line-height:1.5;overflow-y:auto;height:420px;max-height:420px;white-space:pre-wrap;word-break:break-word;">Waiting for bot output...</pre>
         </div>
       </div>
 
@@ -670,7 +669,7 @@
       window.location.href = 'index.html';
     }
 
-    // ── Unified Futures Bot control panel (ORB + Fade) ─────────────────────
+    // ── Unified Futures Bot control panel (ORB + Levels) ───────────────────
     (async function initFuturesBot() {
       const RUNNER_URL = 'https://algorithims-wjmd.onrender.com';
       const els = {
@@ -681,7 +680,7 @@
         startBtn: document.getElementById('fb-start-btn'),
         stopBtn: document.getElementById('fb-stop-btn'),
         clearBtn: document.getElementById('fb-clear-btn'),
-        orbTerminal: document.getElementById('fb-terminal'),
+        terminal: document.getElementById('fb-terminal'),
         errorEl: document.getElementById('fb-error'),
         statusBadge: document.getElementById('fb-status-badge'),
         accountRefreshBtn: document.getElementById('fb-account-refresh-btn'),
@@ -711,27 +710,32 @@
 
       let botEvtSource = null;
       let botRunning = false;
+      let botLastHeart = 0;
 
       // Restore saved fields
       const saved = JSON.parse(localStorage.getItem('fb_creds') || '{}');
       if (saved.username) els.username.value = saved.username;
+      if (saved.apiKey) els.apiKey.value = saved.apiKey;
 
       function saveFields() {
         localStorage.setItem('fb_creds', JSON.stringify({
           username: els.username.value,
+          apiKey: els.apiKey.value,
         }));
       }
 
-      function showError(msg) {
-        els.errorEl.textContent = msg;
-        els.errorEl.style.display = msg ? 'block' : 'none';
+      function updateButtons() {
+        els.startBtn.disabled = botRunning;
+        els.startBtn.style.opacity = botRunning ? '0.4' : '1';
+        els.startBtn.style.cursor = botRunning ? 'not-allowed' : 'pointer';
+        els.startBtn.textContent = botRunning ? 'Running...' : 'Start';
       }
 
-      function updateBadge() {
+      function updateStatusBadge() {
         if (botRunning) {
           els.statusBadge.textContent = '● Combined Running';
           els.statusBadge.style.background = 'rgba(0,230,118,0.12)';
-          els.statusBadge.style.color = 'var(--accent)';
+          els.statusBadge.style.color = '#00e676';
         } else {
           els.statusBadge.textContent = '○ Stopped';
           els.statusBadge.style.background = 'rgba(255,255,255,0.05)';
@@ -739,8 +743,13 @@
         }
       }
 
+      function showError(msg) {
+        els.errorEl.textContent = msg;
+        els.errorEl.style.display = msg ? 'block' : 'none';
+      }
+
       function appendLine(line) {
-        const t = els.orbTerminal;
+        const t = els.terminal;
         const atBottom = t.scrollHeight - t.scrollTop - t.clientHeight < 40;
         if (t.textContent === 'Waiting for bot output...') t.textContent = '';
         t.textContent += line + '\n';
@@ -750,7 +759,11 @@
       function connectBotStream() {
         if (botEvtSource) botEvtSource.close();
         botEvtSource = new EventSource(`${RUNNER_URL}/api/stream?userId=${encodeURIComponent(userId)}&botType=combined`);
-        botEvtSource.onmessage = (e) => { try { appendLine(JSON.parse(e.data)); } catch { appendLine(e.data); } };
+        botEvtSource.onmessage = (e) => {
+          let line; try { line = JSON.parse(e.data); } catch { line = e.data; }
+          if (line.includes('[HEARTBEAT]') || line.includes('Market feed live') || line.includes('Subscribed') || line.includes('Running on WebSocket')) { botLastHeart = Date.now(); }
+          appendLine(line);
+        };
         botEvtSource.onerror = () => { appendLine('[dashboard] Lost bot connection — retrying...'); };
       }
 
@@ -759,12 +772,19 @@
           const res = await fetch(`${RUNNER_URL}/api/status?userId=${encodeURIComponent(userId)}&botType=combined`);
           const j = await res.json();
           botRunning = !!j.running;
-          updateBadge();
+          updateStatusBadge();
+          updateButtons();
+          // Auto-connect stream if running
+          if (botRunning && !botEvtSource) connectBotStream();
         } catch {
           botRunning = false;
-          updateBadge();
+          updateStatusBadge();
+          updateButtons();
         }
       }
+
+      // Poll status on page load to detect already-running bots
+      await pollStatus();
 
       // Start combined bot
       els.startBtn.addEventListener('click', async () => {
@@ -792,7 +812,8 @@
           } else {
             connectBotStream();
             botRunning = true;
-            updateBadge();
+            updateStatusBadge();
+            updateButtons();
           }
         } catch (e) {
           showError(`Could not reach runner at ${RUNNER_URL}`);
@@ -809,14 +830,15 @@
             body: JSON.stringify({ userId, botType: 'combined' })
           });
           botRunning = false;
-          updateBadge();
+          updateStatusBadge();
+          updateButtons();
         } catch (e) {
           showError(`Could not reach runner at ${RUNNER_URL}`);
         }
       });
 
       els.clearBtn.addEventListener('click', () => {
-        els.orbTerminal.textContent = 'Waiting for bot output...';
+        els.terminal.textContent = 'Waiting for bot output...';
       });
 
       function showAccountError(msg) {
