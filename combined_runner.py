@@ -6,10 +6,11 @@ One TopstepX login, one WebSocket, both bots run in separate threads.
 import os
 import sys
 
-# Combined runner uses its own built-in defaults (ORB on NQ strategy with
-# MNQ micro contract, Fade on MNQ). Ignore any dashboard per-user runtime
-# config so ORB and Fade settings don't collide.
-if "BOT_RUNTIME_CONFIG_PATH" in os.environ:
+# Combined runner uses its own built-in defaults when no dashboard config is
+# provided, but respects BOT_RUNTIME_CONFIG_PATH if the Render dashboard sets
+# one (e.g., 1 NQ). Local live runs won't set this env (and we clear it unless
+# running on Render), so they keep using the locked 5 MNQ / $650 cap defaults.
+if "BOT_RUNTIME_CONFIG_PATH" in os.environ and os.environ.get("RENDER") != "true":
     del os.environ["BOT_RUNTIME_CONFIG_PATH"]
 # Only trade EXPRESS-funded accounts by default.
 if "ACCOUNT_NAME_FILTER" not in os.environ:
@@ -26,7 +27,7 @@ from boof_futures_live import BoofBot, TopstepClient, MARKET_HUB, TZ
 from fade_scalp_live import FadeScalpBot, DOLLAR_PER_PT as FADE_DOLLAR_PER_PT
 from levels_live import LevelsBot
 
-HARD_DAILY_LOSS_CAP = float(os.environ.get("HARD_DAILY_LOSS_CAP", "500"))
+HARD_DAILY_LOSS_CAP = float(os.environ.get("HARD_DAILY_LOSS_CAP", "650"))
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 log_dir = os.environ.get("BOT_LOG_DIR", os.path.join(BASE_DIR, "logs"))
@@ -58,8 +59,8 @@ class CombinedRunner:
         self.api_key, self.username = _load_credentials()
         self.client = TopstepClient(self.username, self.api_key)
         self.boof = BoofBot(client=self.client, combined_mode=True)
-        # Set DISABLE_FADE=true env var to disable Fade (e.g. on Render)
-        self.disable_fade = os.environ.get("DISABLE_FADE", "false").lower() in ("1", "true", "yes")
+        # Fade disabled by default for no-Fade ORB + Levels config
+        self.disable_fade = os.environ.get("DISABLE_FADE", "true").lower() in ("1", "true", "yes")
         if self.disable_fade:
             log.info("Fade bot DISABLED — set DISABLE_FADE=false to re-enable")
             self.fade = None
@@ -77,6 +78,7 @@ class CombinedRunner:
         self._threads = []
         self._gateway_logged_out = False
         self._hard_halted = False
+        self._hard_halted_date = None
 
     def _combined_realtime_pnl(self):
         total = self.boof._combined_marked_pnl()
@@ -100,11 +102,18 @@ class CombinedRunner:
 
     def _check_hard_halt(self):
         if self._hard_halted:
+            today = datetime.now(TZ).date()
+            now_t = datetime.now(TZ).time()
+            if self._hard_halted_date and today > self._hard_halted_date and now_t >= dtime(9, 30):
+                self._hard_halted = False
+                self._hard_halted_date = None
+                log.info("[HARD HALT] New trading day after %s - reset and resuming" % today)
             return
         pnl = self._combined_realtime_pnl()
         if pnl <= -HARD_DAILY_LOSS_CAP:
             self._hard_halted = True
-            log.critical("[HARD HALT] Combined PnL $%+.0f <= -$%.0f - flattening everything and blocking new entries for the rest of the day" % (pnl, HARD_DAILY_LOSS_CAP))
+            self._hard_halted_date = datetime.now(TZ).date()
+            log.critical("[HARD HALT] Combined PnL $%+.0f <= -$%.0f on %s - flattening everything and blocking new entries for the rest of the day" % (pnl, HARD_DAILY_LOSS_CAP, self._hard_halted_date))
             for st in self.boof.states.values():
                 if st.in_position:
                     try:

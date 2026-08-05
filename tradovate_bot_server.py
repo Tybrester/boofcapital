@@ -184,13 +184,6 @@ def start_bot():
         if sess["process"] is not None and sess["process"].poll() is None:
             return jsonify({"error": f"{bot_type.upper()} bot is already running. Stop it first."}), 409
 
-        env = dict(os.environ)
-        env["PROJECT_X_USERNAME"] = user_username
-        env["PROJECT_X_API_KEY"]  = user_api_key
-        env["PYTHONUNBUFFERED"]   = "1"
-        # Tell the bot process which per-user config file to poll.
-        env["BOT_RUNTIME_CONFIG_PATH"] = _config_path(user_id, bot_type)
-
         try:
             base_qty = max(1, int(body.get("baseQty", 1)))
         except (TypeError, ValueError):
@@ -201,6 +194,17 @@ def start_bot():
             loss_qty = base_qty
         base_symbol = body.get("baseSymbol") if body.get("baseSymbol") in ("NQ", "MNQ") else "MNQ"
         loss_symbol = body.get("lossSymbol") if body.get("lossSymbol") in ("NQ", "MNQ") else base_symbol
+
+        env = dict(os.environ)
+        env["PROJECT_X_USERNAME"] = user_username
+        env["PROJECT_X_API_KEY"]  = user_api_key
+        env["PYTHONUNBUFFERED"]   = "1"
+        # Tell the bot process which per-user config file to poll.
+        env["BOT_RUNTIME_CONFIG_PATH"] = _config_path(user_id, bot_type)
+        # NQ is $20/pt vs MNQ $2/pt, so the daily cap must scale with notional.
+        if bot_type == "combined" and "HARD_DAILY_LOSS_CAP" not in env:
+            env["HARD_DAILY_LOSS_CAP"] = "1000" if base_symbol == "NQ" else "650"
+
         try:
             with open(_config_path(user_id, bot_type), "w") as f:
                 json.dump({

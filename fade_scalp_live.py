@@ -51,7 +51,7 @@ MARKET_HUB = "wss://rtc.topstepx.com/hubs/market"
 
 # Strategy parameters (optimized v2: tick_cross + 120s cooldown)
 CONTRACT_NAME = _SYMBOL_MAP.get(_runtime_cfg.get("baseSymbol", ""), "MNQU26")
-QTY = _runtime_cfg.get("baseQty", 1)
+QTY = _runtime_cfg.get("baseQty", 5)
 MV = _MV_MAP.get(_runtime_cfg.get("baseSymbol", ""), 2)
 DOLLAR_PER_PT = QTY * MV
 
@@ -671,8 +671,8 @@ class FadeScalpBot:
         self.state.trade = TradeState()
         self.state.last_exit_time = self._now_et()
 
-        # Kill switch
-        if self.state.daily_pnl <= MAX_DAILY_LOSS:
+        # Kill switch (standalone only — combined runner enforces overall daily cap)
+        if not self._combined_mode and self.state.daily_pnl <= MAX_DAILY_LOSS:
             self.state.halted = True
             log.warning(f"DAILY LOSS LIMIT HIT: ${self.state.daily_pnl:.0f} <= ${MAX_DAILY_LOSS:.0f} ΓÇö HALTED")
 

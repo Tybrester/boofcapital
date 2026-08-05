@@ -69,7 +69,7 @@ INSTRUMENTS = {
         "trail": 5.0,
         "trail_activate": 8.0,
         "trail_profit_floor": 0.0,
-        "max_reclaims": 999,
+        "max_reclaims": 0,
         "max_bounces_per_side": 0,
         "max_daily_trades": 999,
         "immediate_orb": True,
@@ -82,12 +82,12 @@ INSTRUMENTS = {
         "daily_profit_trigger": 600.0,
         "daily_profit_floor": 500.0,
         "failed_orb_filter_dows": ["Friday"],
-        "qty": _runtime_cfg.get("baseQty", 8),
+        "qty": _runtime_cfg.get("baseQty", 5),
         # Reduced size contract (used after loss streak)
         "reduced_contract_name": _SYMBOL_MAP.get(_runtime_cfg.get("lossSymbol", ""), "MNQU26"),
         "reduced_contract_id": None,
         "reduced_mv": _MV_MAP.get(_runtime_cfg.get("lossSymbol", ""), 2),
-        "reduced_qty": _runtime_cfg.get("lossQty", 4),
+        "reduced_qty": _runtime_cfg.get("lossQty", 5),
     },
     "ES": {
         "contract_id": None,      # filled at startup via /Contract/search for "MES"
@@ -120,10 +120,10 @@ MAX_ORB = 3
 ENABLED_SYMBOLS = {"NQ"}
 ORB_ONLY_MODE = os.environ.get("ORB_ONLY_MODE", "false").lower() in ("1", "true", "yes")
 
-ATR_MULT = 0.5   # 0.7x ATR(14) on 1m bars
+ATR_MULT = 0.7   # ATR(14) multiplier
 ATR_PERIOD = 14
-NQ_ATR_MAX_STOP = 20.0
-NQ_FIXED_QTY = False
+NQ_ATR_MAX_STOP = 30.0
+NQ_FIXED_QTY = True
 NQ_SIZE_DOWN_LOSSES = 2  # consecutive losses before reducing to reduced_qty
 DAILY_LOSS_LIMIT = -1_000_000_000.0
 FAILED_ORB_MAX_MOVE = 5.0   # max adverse excursion (pts) for failed-ORB detection
