@@ -570,9 +570,10 @@
           <div style="font-size:0.75rem;color:var(--muted);margin-top:-6px;">Your own TopstepX API key (TopstepX → Settings → API Keys)</div>
 
           <div style="border:1px solid #2a2a2a;border-radius:10px;padding:14px 16px;background:#0e0e0e;">
-            <div style="font-size:0.85rem;font-weight:700;color:var(--accent);margin-bottom:8px;">Combined ORB + Levels Bot</div>
+            <div style="font-size:0.85rem;font-weight:700;color:var(--accent);margin-bottom:8px;">ORB + Previous Day H/L</div>
             <div style="font-size:0.75rem;color:#777;line-height:1.5;">
-              Runs ORB and Levels under one shared TopstepX connection.
+              Runs ORB and Previous Day H/L breakout under one shared TopstepX connection.
+              <br>Fade and Asia strategies are disabled.
               <br>Default sizing on Render: 1 NQ ($20/pt).
               <br>Local live runs use 5 MNQ and never touch this runtime config.
             </div>
@@ -733,7 +734,7 @@
 
       function updateStatusBadge() {
         if (botRunning) {
-          els.statusBadge.textContent = '● Combined Running';
+          els.statusBadge.textContent = '● ORB + PDHL Running';
           els.statusBadge.style.background = 'rgba(0,230,118,0.12)';
           els.statusBadge.style.color = '#00e676';
         } else {

@@ -1,5 +1,5 @@
 """
-Combined runner for ORB + Fade strategies.
+Combined runner for ORB + Previous Day H/L (PDHL) strategies.
 One TopstepX login, one WebSocket, both bots run in separate threads.
 """
 
@@ -59,20 +59,13 @@ class CombinedRunner:
         self.api_key, self.username = _load_credentials()
         self.client = TopstepClient(self.username, self.api_key)
         self.boof = BoofBot(client=self.client, combined_mode=True)
-        # Fade disabled by default for no-Fade ORB + Levels config
-        self.disable_fade = os.environ.get("DISABLE_FADE", "true").lower() in ("1", "true", "yes")
-        if self.disable_fade:
-            log.info("Fade bot DISABLED — set DISABLE_FADE=false to re-enable")
-            self.fade = None
-        else:
-            self.fade = FadeScalpBot(client=self.client, combined_mode=True)
-        # Set DISABLE_LEVELS=true env var to run without the Levels bot
-        self.disable_levels = os.environ.get("DISABLE_LEVELS", "false").lower() in ("1", "true", "yes")
-        if self.disable_levels:
-            log.info("Levels bot DISABLED — set DISABLE_LEVELS=false to re-enable")
-            self.levels = None
-        else:
-            self.levels = LevelsBot(client=self.client, combined_mode=True)
+        # Combined bot runs ORB + Previous Day H/L (Levels); never Fade
+        self.disable_fade = True
+        log.info("Fade bot DISABLED")
+        self.fade = None
+        self.disable_levels = False
+        log.info("Levels bot ENABLED — Previous Day H/L")
+        self.levels = LevelsBot(client=self.client, combined_mode=True)
         self._hub = None
         self._running = False
         self._threads = []

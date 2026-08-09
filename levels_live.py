@@ -4,15 +4,18 @@ TopstepX via REST API + SignalR WebSocket (designed to share a hub/client
 with boof_futures_live.BoofBot and fade_scalp_live.FadeScalpBot via
 combined_runner.py, same as the Fade bot does).
 
-Strategy (backtested on 148 days of real NQ tick data):
-  A) Prior-day RTH high/low breakout   | 108 trades | WR 66.7% | PF 1.41 | +$2,644
-  C) Asia session (18:00-00:00 ET) range breakout | 185 trades | WR 65.9% | PF 1.28 | +$3,432
-  One entry per level per day (first fresh tick-cross during RTH). Only one
-  position at a time across both levels combined.
+Strategy (backtested on 155 days of real NQ tick data):
+  A) Prior-day RTH high/low breakout | pure breakout, momentum-filtered
+  C) Asia session (18:00-00:00 ET) range | COMBINED bounce/breakout:
+     price within 8pts of level -> if it reverses 5+pts before pushing
+     through, take the FADE; if it pushes through 5+pts first, take the
+     BREAKOUT. Backtest: 216 trades | WR 64.8% | PF 1.32 | +$4,370
+     (vs +$1,867 pure breakout / +$2,195 pure bounce alone).
+  One entry per level per day. Only one position at a time across all levels.
 
 Risk management (identical to live ORB config for consistency):
-  ATR-based SL: 0.5x ATR(14) on 1m bars, capped at 20pts
-  Trail: activates after +8pts favorable, trails 5pts behind peak
+  ATR-based SL: 0.5x ATR(14) on 1m bars, capped at 25pts
+  Trail: activates after +12pts favorable, trails 5pts behind peak
   EOD forced flat at 15:55 ET
 
 Position size: 5 MNQ ($2/pt) — matches ORB and Fade live config.
@@ -60,9 +63,17 @@ DOLLAR_PER_PT = QTY * MV
 
 ATR_MULT = 0.5
 ATR_PERIOD = 14
-ATR_CAP = 20.0
+ATR_CAP = 25.0
 TRAIL_ACTIVATE = 15.0
-TRAIL = 10.0
+TRAIL = 8.0
+TP_TARGET = 50.0
+MOMENTUM_LOOKBACK_SECONDS = 60
+DISABLE_ASIA = True
+
+# Asia-range combined bounce/breakout params (backtested best combo)
+ASIA_TOUCH_THRESH = 8.0     # pts from level that arms zone tracking
+ASIA_REVERSAL = 5.0         # pts reversal from extreme -> fade/bounce trade
+ASIA_BREAKOUT_BUFFER = 5.0  # pts push through level -> breakout trade
 
 ENTRY_START = dtime(9, 30)
 ENTRY_CUTOFF = dtime(15, 50)
@@ -90,7 +101,14 @@ class LevelsState:
     asia_low: float = 0.0
     levels_ready: bool = False
     fired: set = field(default_factory=set)  # level names already entered today
+    pre_open_fired: set = field(default_factory=set)  # level names already crossed pre-open (logged once)
+    # Asia combined bounce/breakout zone tracking (reset each day)
+    asia_high_zone_active: bool = False
+    asia_high_extreme: float = 0.0
+    asia_low_zone_active: bool = False
+    asia_low_extreme: float = 0.0
     last_price: float = 0.0
+    price_history: list = field(default_factory=list)
     in_position: bool = False
     direction: str = ""
     entry_px: float = 0.0
@@ -175,10 +193,17 @@ class LevelsBot:
         if not accounts:
             raise RuntimeError("No accounts matched account filter")
 
-        min_balance = float(os.environ.get("MIN_ACCOUNT_BALANCE", "50").strip() or "50")
-        accounts = [a for a in accounts if (a.get("balance") or 0) >= min_balance]
+        include_raw = os.environ.get("INCLUDE_ACCOUNT_IDS", "").strip()
+        if include_raw:
+            include_ids = {int(x.strip()) for x in include_raw.split(",") if x.strip()}
+            accounts = [a for a in accounts if a["id"] in include_ids or name_filter in a.get("name", "").upper()]
+
+        exclude_raw = os.environ.get("EXCLUDE_ACCOUNT_IDS", "").strip()
+        if exclude_raw:
+            exclude_ids = {int(x.strip()) for x in exclude_raw.split(",") if x.strip()}
+            accounts = [a for a in accounts if a["id"] not in exclude_ids]
         if not accounts:
-            raise RuntimeError(f"No accounts with balance >= ${min_balance}")
+            raise RuntimeError("All accounts were excluded")
 
         self.account_ids = [a["id"] for a in accounts]
         self.account_id = self.account_ids[0]
@@ -213,8 +238,13 @@ class LevelsBot:
             log.warning(f"Position reconciliation failed: {e}")
 
         self._refresh_levels(force=True)
-        log.info(f"Strategy: Prior-Day H/L + Asia-Range breakout | ATR SL 0.5x cap {ATR_CAP:.0f} | "
-                 f"Trail activate {TRAIL_ACTIVATE:.0f}/trail {TRAIL:.0f} | Size {QTY} MNQ")
+        if DISABLE_ASIA:
+            log.info(f"Strategy: Prior-Day H/L breakout ONLY (Asia-Range DISABLED — set DISABLE_ASIA=false to re-enable) | "
+                     f"ATR SL 0.5x cap {ATR_CAP:.0f} | Trail activate {TRAIL_ACTIVATE:.0f}/trail {TRAIL:.0f} | Size {QTY} MNQ")
+        else:
+            log.info(f"Strategy: Prior-Day H/L breakout + Asia-Range combined bounce/breakout "
+                     f"(touch={ASIA_TOUCH_THRESH:.0f} rev={ASIA_REVERSAL:.0f} buf={ASIA_BREAKOUT_BUFFER:.0f}) | "
+                     f"ATR SL 0.5x cap {ATR_CAP:.0f} | Trail activate {TRAIL_ACTIVATE:.0f}/trail {TRAIL:.0f} | Size {QTY} MNQ")
 
     # ── LEVEL COMPUTATION ────────────────────────────────────────────────
 
@@ -265,7 +295,7 @@ class LevelsBot:
             d = _prev_business_day(d)
             start_et = datetime.combine(d, ENTRY_START, tzinfo=TZ)
             end_et = datetime.combine(d, EOD_EXIT, tzinfo=TZ)
-            bars = self._fetch_bars(start_et, end_et)
+            bars = self._fetch_bars(start_et, end_et, unit_number=1)
             prior_high, prior_low = self._range_from_bars(bars)
             if prior_high is not None:
                 break
@@ -277,7 +307,7 @@ class LevelsBot:
             asia_start_day = _prev_calendar_day(d)
             start_et = datetime.combine(asia_start_day, dtime(18, 0), tzinfo=TZ)
             end_et = datetime.combine(d, dtime(0, 0), tzinfo=TZ)
-            bars = self._fetch_bars(start_et, end_et)
+            bars = self._fetch_bars(start_et, end_et, unit_number=1)
             asia_high, asia_low = self._range_from_bars(bars)
             if asia_high is not None:
                 break
@@ -293,6 +323,10 @@ class LevelsBot:
         self.state.levels_ready = bool(prior_high and asia_high)
         self.state.day = str(today)
         self.state.fired = set()
+        self.state.asia_high_zone_active = False
+        self.state.asia_high_extreme = 0.0
+        self.state.asia_low_zone_active = False
+        self.state.asia_low_extreme = 0.0
         log.info(f"LEVELS for {today}: PriorDay H={self.state.prior_high:.2f} L={self.state.prior_low:.2f} | "
                  f"Asia H={self.state.asia_high:.2f} L={self.state.asia_low:.2f}")
 
@@ -311,6 +345,8 @@ class LevelsBot:
             self.state.daily_trades = 0
             self.state.wins = 0
             self.state.losses = 0
+            self.state.price_history = []
+            self.state.pre_open_fired = set()
             self._refresh_levels(force=True)
 
     def _is_trading_hours(self) -> bool:
@@ -320,11 +356,59 @@ class LevelsBot:
     def _should_force_exit(self) -> bool:
         return self._now_et().time() >= EOD_EXIT
 
+    def _momentum_confirms(self, direction: str, price: float, now: datetime) -> bool:
+        """Require the market to be moving in the entry direction over the last lookback window."""
+        cutoff = now - timedelta(seconds=MOMENTUM_LOOKBACK_SECONDS)
+        past = None
+        for t, p in reversed(self.state.price_history):
+            if t <= cutoff:
+                past = p
+                break
+        if past is None:
+            return True
+        return (direction == "long" and price > past) or (direction == "short" and price < past)
+
+    def _check_asia_level(self, level: float, side: str, price: float):
+        """Combined bounce/breakout logic for an Asia level.
+        side: 'high' (resistance) or 'low' (support).
+        Returns (direction, setup_name) if triggered this tick, else None.
+        """
+        st = self.state
+        if side == "high":
+            if not st.asia_high_zone_active:
+                if price < level - ASIA_TOUCH_THRESH:
+                    return None
+                st.asia_high_zone_active = True
+                st.asia_high_extreme = price
+            elif price > st.asia_high_extreme:
+                st.asia_high_extreme = price
+            if price >= level + ASIA_BREAKOUT_BUFFER:
+                return "long", "asia_high_breakout"
+            if st.asia_high_extreme - price >= ASIA_REVERSAL:
+                return "short", "asia_high_bounce"
+            return None
+        else:
+            if not st.asia_low_zone_active:
+                if price > level + ASIA_TOUCH_THRESH:
+                    return None
+                st.asia_low_zone_active = True
+                st.asia_low_extreme = price
+            elif price < st.asia_low_extreme:
+                st.asia_low_extreme = price
+            if price <= level - ASIA_BREAKOUT_BUFFER:
+                return "short", "asia_low_breakout"
+            if price - st.asia_low_extreme >= ASIA_REVERSAL:
+                return "long", "asia_low_bounce"
+            return None
+
     def _on_tick(self, price: float):
         now = self._now_et()
         self._check_new_day()
         prev_price = self.state.last_price
         self.state.last_price = price
+        self.state.price_history.append((now, price))
+        cutoff = now - timedelta(seconds=MOMENTUM_LOOKBACK_SECONDS * 2)
+        self.state.price_history = [(t, p) for t, p in self.state.price_history if t > cutoff]
 
         if self.state.in_position and self._should_force_exit():
             self._exit_trade(price, "EOD")
@@ -334,25 +418,63 @@ class LevelsBot:
             self._manage_exit(price)
             return  # only one position at a time; skip new-entry checks while in a trade
 
-        if not self.state.levels_ready or not self._is_trading_hours() or prev_price <= 0:
+        if not self.state.levels_ready or prev_price <= 0:
             return
 
-        candidates = [
+        breakout_candidates = [
             ("prior_high", "long", self.state.prior_high),
             ("prior_low", "short", self.state.prior_low),
-            ("asia_high", "long", self.state.asia_high),
-            ("asia_low", "short", self.state.asia_low),
         ]
-        for name, direction, level in candidates:
+        for name, direction, level in breakout_candidates:
             if not level or name in self.state.fired:
                 continue
             crossed = (direction == "long" and prev_price <= level < price) or \
                       (direction == "short" and prev_price >= level > price)
             if crossed:
+                # Track pre-open crosses so the 9:30 RTH open doesn't take a retest of a level
+                # already broken during the pre-market.
+                if not self._is_trading_hours():
+                    if name not in self.state.pre_open_fired:
+                        self.state.pre_open_fired.add(name)
+                        log.info(f"LEVEL CROSS (pre-open): {name}={level:.2f} px={price:.2f} -> {direction.upper()}")
+                    continue
+                if not self._momentum_confirms(direction, price, now):
+                    log.info(f"LEVEL CROSS (rejected): {name}={level:.2f} px={price:.2f} -> {direction.upper()} | against momentum")
+                    continue
                 log.info(f"LEVEL CROSS: {name}={level:.2f} px={price:.2f} -> {direction.upper()} breakout")
                 self.state.fired.add(name)
                 self._enter_trade(direction, price, name)
-                break
+                return
+
+        # Asia levels: combined bounce/breakout logic (see module docstring).
+        # Only evaluated during RTH (matches backtest window), and only if no
+        # prior-day breakout fired above.
+        if DISABLE_ASIA:
+            return
+        if self._is_trading_hours():
+            asia_candidates = [
+                ("asia_high", "high", self.state.asia_high),
+                ("asia_low", "low", self.state.asia_low),
+            ]
+            for name, side, level in asia_candidates:
+                if not level or name in self.state.fired:
+                    continue
+                result = self._check_asia_level(level, side, price)
+                if result:
+                    direction, setup = result
+                    log.info(f"ASIA {setup.upper()}: {name}={level:.2f} px={price:.2f} -> {direction.upper()}")
+                    self.state.fired.add(name)
+                    self._enter_trade(direction, price, setup)
+                    return
+        else:
+            for name, level in (("asia_high", self.state.asia_high), ("asia_low", self.state.asia_low)):
+                if not level or name in self.state.pre_open_fired:
+                    continue
+                crossed = (name == "asia_high" and prev_price <= level < price) or \
+                          (name == "asia_low" and prev_price >= level > price)
+                if crossed:
+                    self.state.pre_open_fired.add(name)
+                    log.info(f"LEVEL CROSS (pre-open): {name}={level:.2f} px={price:.2f}")
 
     # ── ENTRY / EXIT ─────────────────────────────────────────────────────
 
@@ -434,6 +556,9 @@ class LevelsBot:
         if st.direction == "long":
             if price > st.best_excursion:
                 st.best_excursion = price
+            if TP_TARGET is not None and price >= st.entry_px + TP_TARGET:
+                self._exit_trade(price, "TP")
+                return
             sl_px = st.entry_px - st.atr_sl
             trail_active = st.best_excursion >= st.entry_px + TRAIL_ACTIVATE
             trail_stop = st.best_excursion - TRAIL
@@ -447,6 +572,9 @@ class LevelsBot:
         else:
             if st.best_excursion == 0.0 or price < st.best_excursion:
                 st.best_excursion = price
+            if TP_TARGET is not None and price <= st.entry_px - TP_TARGET:
+                self._exit_trade(price, "TP")
+                return
             sl_px = st.entry_px + st.atr_sl
             trail_active = st.best_excursion <= st.entry_px - TRAIL_ACTIVATE
             trail_stop = st.best_excursion + TRAIL

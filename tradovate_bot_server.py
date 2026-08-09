@@ -52,11 +52,9 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # Bot scripts — keyed by botType sent from the dashboard.
 # Each user can run one instance of each type simultaneously.
 BOT_SCRIPTS = {
-    "orb": os.path.join(BASE_DIR, "boof_futures_live.py"),
-    "fade": os.path.join(BASE_DIR, "fade_scalp_live.py"),
     "combined": os.path.join(BASE_DIR, "combined_runner.py"),
 }
-DEFAULT_BOT_TYPE = "orb"
+DEFAULT_BOT_TYPE = "combined"
 
 # Per-user runtime config files live here — one JSON file per userId so
 # concurrent users' live qty/symbol updates never collide.
@@ -201,6 +199,10 @@ def start_bot():
         env["PYTHONUNBUFFERED"]   = "1"
         # Tell the bot process which per-user config file to poll.
         env["BOT_RUNTIME_CONFIG_PATH"] = _config_path(user_id, bot_type)
+        # Combined bot is ORB + Prior-Day H/L; never run Fade or Asia
+        env["DISABLE_FADE"] = "true"
+        env["DISABLE_LEVELS"] = "false"
+        env["DISABLE_ASIA"] = "true"
         # NQ is $20/pt vs MNQ $2/pt, so the daily cap must scale with notional.
         if bot_type == "combined" and "HARD_DAILY_LOSS_CAP" not in env:
             env["HARD_DAILY_LOSS_CAP"] = "1000" if base_symbol == "NQ" else "650"

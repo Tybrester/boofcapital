@@ -58,6 +58,10 @@ TZ = ZoneInfo("America/New_York")
 API_URL      = "https://api.topstepx.com"
 MARKET_HUB   = "wss://rtc.topstepx.com/hubs/market"
 
+# If price is restored more than this far from the saved OR, consider the OR stale
+# and rebuild it from live bars instead of waiting for a massive gap to close.
+OR_SANITY_DISTANCE = 500.0
+
 INSTRUMENTS = {
     "NQ": {
         "contract_id": None,        # filled at startup via /Contract/search
@@ -65,7 +69,8 @@ INSTRUMENTS = {
         "mv": _MV_MAP.get(_runtime_cfg.get("baseSymbol", ""), 2),
         "or_bars": 3,
         "orb_max_bars_after": 1,   # allow 1 extra bar after OR for directional breakout
-        "sl": 20.0,
+        "sl": 30.0,
+        "tp": 30.0,
         "trail": 5.0,
         "trail_activate": 8.0,
         "trail_profit_floor": 0.0,
@@ -595,16 +600,17 @@ class BoofBot:
                     raise RuntimeError(f"No accounts matched ACCOUNT_NAME_FILTER={name_filter!r}")
                 accounts = matched
 
-        # Optional balance filter: set MIN_ACCOUNT_BALANCE to exclude low-balance accounts
-        min_balance = float(os.environ.get("MIN_ACCOUNT_BALANCE", "0").strip() or "0")
-        funded_accounts = [a for a in accounts if a.get("balance", 0) is not None and a.get("balance", 0) >= min_balance]
-        underfunded = [a for a in accounts if a not in funded_accounts]
-        if underfunded:
-            log.warning(f"Excluding underfunded account(s) below ${min_balance}: "
-                        f"{[(a['id'], a.get('balance')) for a in underfunded]}")
-        if not funded_accounts:
-            raise RuntimeError(f"No accounts with balance >= ${min_balance}")
-        accounts = funded_accounts
+        include_raw = os.environ.get("INCLUDE_ACCOUNT_IDS", "").strip()
+        if include_raw:
+            include_ids = {int(x.strip()) for x in include_raw.split(",") if x.strip()}
+            accounts = [a for a in accounts if a["id"] in include_ids or (name_filter and name_filter in a.get("name", "").upper())]
+
+        exclude_raw = os.environ.get("EXCLUDE_ACCOUNT_IDS", "").strip()
+        if exclude_raw:
+            exclude_ids = {int(x.strip()) for x in exclude_raw.split(",") if x.strip()}
+            accounts = [a for a in accounts if a["id"] not in exclude_ids]
+        if not accounts:
+            raise RuntimeError("All accounts were excluded")
 
         self.account_ids = [a["id"] for a in accounts]
         self.account_id  = self.account_ids[0]  # primary for position checks
@@ -700,33 +706,37 @@ class BoofBot:
             try:
                 if os.path.exists(json_path):
                     with open(json_path) as f: data = json.load(f)
-                    state.consecutive_losses = int(data.get("consecutive_losses", 0))
-                    state.consecutive_wins = int(data.get("consecutive_wins", 0))
-                    state.size_tier = int(data.get("size_tier", 0))
-                    # Ensure size tier is consistent if a loss streak was saved before threshold was applied
-                    if state.sym == "NQ" and not NQ_FIXED_QTY and state.consecutive_losses >= NQ_SIZE_DOWN_LOSSES:
-                        state.size_tier = 1
-                        state.consecutive_losses = 0
-                    state.consec_wins_since_reduce = int(data.get("consec_wins_since_reduce", 0))
+                    # Only carry multi-day counters from a stale file; today's session
+                    # state (PnL, cooldown, profit floor, size tier, etc.) must come from
+                    # a file whose date matches today.
                     state.consecutive_losing_days = int(data.get("consecutive_losing_days", 0))
                     state.weekly_pause_until = str(data.get("weekly_pause_until", ""))
-                    state.day = str(data.get("date") or "") or None
-                    state.daily_pnl = float(data.get("daily_pnl", 0.0))
-                    state.daily_profit_floor_armed = bool(data.get("daily_profit_floor_armed", False))
-                    state.daily_profit_halted = bool(data.get("daily_profit_halted", False))
-                    cd_iso = data.get("cooldown_until")
-                    if cd_iso:
-                        try:
-                            from datetime import datetime as _dt
-                            state.cooldown_until = _dt.fromisoformat(cd_iso)
-                            if state.cooldown_until.tzinfo is None:
-                                state.cooldown_until = state.cooldown_until.replace(tzinfo=TZ)
-                        except Exception:
-                            state.cooldown_until = None
                     restored_halt = data.get("daily_halt_day")
                     if restored_halt == today:
                         self.daily_halt_day = restored_halt
                     if data.get("date") == today:
+                        # Same-day restart: restore the full session state
+                        state.consecutive_losses = int(data.get("consecutive_losses", 0))
+                        state.consecutive_wins = int(data.get("consecutive_wins", 0))
+                        state.size_tier = int(data.get("size_tier", 0))
+                        # Ensure size tier is consistent if a loss streak was saved before threshold was applied
+                        if state.sym == "NQ" and not NQ_FIXED_QTY and state.consecutive_losses >= NQ_SIZE_DOWN_LOSSES:
+                            state.size_tier = 1
+                            state.consecutive_losses = 0
+                        state.consec_wins_since_reduce = int(data.get("consec_wins_since_reduce", 0))
+                        state.day = today
+                        state.daily_pnl = float(data.get("daily_pnl", 0.0))
+                        state.daily_profit_floor_armed = bool(data.get("daily_profit_floor_armed", False))
+                        state.daily_profit_halted = bool(data.get("daily_profit_halted", False))
+                        cd_iso = data.get("cooldown_until")
+                        if cd_iso:
+                            try:
+                                from datetime import datetime as _dt
+                                state.cooldown_until = _dt.fromisoformat(cd_iso)
+                                if state.cooldown_until.tzinfo is None:
+                                    state.cooldown_until = state.cooldown_until.replace(tzinfo=TZ)
+                            except Exception:
+                                state.cooldown_until = None
                         restored_h = float(data["or_high"])
                         restored_l = float(data["or_low"])
                         state.or_high = restored_h
@@ -735,7 +745,6 @@ class BoofBot:
                         state.or_complete = True
                         state.or_seeded = False
                         state.or_bars_collected = state.cfg["or_bars"]
-                        state.day = today
                         state.bo_fired   = int(data.get("bo_fired", 0))
                         state.fade_fired = bool(data.get("fade_fired", False))
                         state.orb_entry_taken = bool(data.get("orb_entry_taken", state.bo_fired > 0))
@@ -746,9 +755,6 @@ class BoofBot:
                         if hasattr(state, "ym_twap_fired"): state.ym_twap_fired = bool(data.get("ym_twap_fired", False))
                         if hasattr(state, "vwap_last_entry_bar"): state.vwap_last_entry_bar = int(data.get("vwap_last_entry_bar", -99))
                         state.daily_trades = int(data.get("daily_trades", 0))
-                        state.daily_pnl = float(data.get("daily_pnl", 0.0))
-                        state.daily_profit_floor_armed = bool(data.get("daily_profit_floor_armed", False))
-                        state.daily_profit_halted = bool(data.get("daily_profit_halted", False))
                         state.prev_high = float(data.get("prev_high", 0.0))
                         state.prev_low = float(data.get("prev_low", 0.0))
                         if hasattr(state, "prev_day_high"): state.prev_day_high = float(data.get("prev_day_high", 0.0))
@@ -774,27 +780,10 @@ class BoofBot:
                         continue
             except Exception:
                 pass
-            # fallback: scan today's log files for OR complete line
-            try:
-                pattern = os.path.join(log_dir, f"bot_{today.replace('-','')}*.log")
-                log_files = sorted(glob.glob(pattern))
-                for lf in log_files:
-                    with open(lf, encoding="utf-8", errors="ignore") as f:
-                        for line in f:
-                            m = re.search(rf"{sym} OR complete: H=([\d.]+) L=([\d.]+)", line)
-                            if m:
-                                state.or_high = float(m.group(1))
-                                state.or_low  = float(m.group(2))
-                                state.or_complete = True
-                                state.or_seeded = False
-                                state.or_bars_collected = state.cfg["or_bars"]
-                                state.day = today
-                            if re.search(rf"{sym} ENTERED .* \((?:BO_OR|BO_PREV)\)", line):
-                                state.bo_fired += 1
-                if state.or_complete:
-                    log.info(f"{sym} OR restored from log: H={state.or_high:.2f} L={state.or_low:.2f} bo_fired={state.bo_fired}")
-            except Exception as e:
-                log.warning(f"{sym} OR log restore failed: {e}")
+            # Do NOT scan log files for OR levels: log files may contain old
+            # backtest/simulation OR complete lines and will load a wildly stale
+            # range. Rely on the JSON state file (if it is from today) or rebuild
+            # the OR from live bars / history seeding.
 
     def _seed_vwap_from_history(self, state: InstrumentState, session_bars: list):
         """Seed ES VWAP and rth_open from historical bars after startup."""
@@ -1037,7 +1026,20 @@ class BoofBot:
                 state.cfg["ticks_received"] = True
                 log.info(f"[LIVE] {state.sym} first tick: px={last:.2f} or_complete={state.or_complete}")
                 if state.or_complete:
-                    if last < state.or_low:
+                    # Sanity-check restored OR vs current price. Stale log/backtest
+                    # state can produce a range thousands of points away from price.
+                    if state.or_high > 0 and (last < state.or_low - OR_SANITY_DISTANCE or
+                                              last > state.or_high + OR_SANITY_DISTANCE):
+                        log.warning(f"[LIVE] {state.sym} OR sanity fail: px={last:.2f} vs restored OR[{state.or_high:.2f}/{state.or_low:.2f}] "
+                                    f"({abs(last - (state.or_high if last > state.or_high else state.or_low)):.0f}pt away) ΓÇö clearing OR to rebuild from live bars")
+                        state.or_high = 0.0
+                        state.or_low = float("inf")
+                        state.or_complete = False
+                        state.or_seeded = False
+                        state.or_bars_collected = 0
+                        state.or15_volume = 0.0
+                        state.or15_volume_ticks = 0
+                    elif last < state.or_low:
                         state.or_retested_low = False
                         log.info(f"[LIVE] {state.sym} started {state.or_low - last:.0f}pt below OR_L ΓÇö waiting for price to close back above OR_L before next short")
                     elif last > state.or_high:
@@ -2002,7 +2004,7 @@ class BoofBot:
                 if not daily_halted and ENTRY_START <= t < EOD_EXIT:
                     for state in self.states.values():
                         self._check_sl(state)
-                        # self._check_tp(state)  # disabled ΓÇö trail handles all exits
+                        self._check_tp(state)
                         self._check_trail_intrabar(state)
 
                 # EOD hard exit
